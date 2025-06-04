@@ -4,7 +4,7 @@ library(targets)
 library(tarchetypes)
 library(crew)
 tar_option_set(
-  controller = crew_controller_local(workers = 30)
+  controller = crew_controller_local(workers = parallelly::availableCores())
 )
 
 library(reproj)
@@ -38,11 +38,12 @@ tabl <- rbind(data.frame(location = "Davis", lon = c(77 + 58/60 + 3/3600), lat =
               readxl::read_excel("Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
   dplyr::rename(location = colony, lon = long) |> dplyr::select(-date))
 
+tabl <- tabl[3, ]
 
 source("R/functions.R")
 list(
   tar_target(bufy, 3000),
-  tar_target(daterange, c(as.Date("2017-01-01"), Sys.Date())),
+  tar_target(daterange, c(as.Date("2025-01-01"), Sys.Date())),
   tar_target(lon, tabl$lon), tar_target(lat, tabl$lat), tar_target(location, tabl$location),
   tar_target(extent, mkextent(lon, lat, bufy), pattern = map(lon, lat)), 
   tar_target(xmin, extent[1], pattern = map(extent)),
