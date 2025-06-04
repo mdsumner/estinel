@@ -32,15 +32,17 @@ library(jsonlite)
 tabl <- rbind(data.frame(location = "Davis", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600)), 
               data.frame(location = "Casey", 
                     lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
+              data.frame(location = "Heard", lon = 73 + 30/60 + 30/3600, lat = -(53 + 0 + 0/3600)),
+              data.frame(location = "Mawson", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
+              data.frame(location = "Macquarie", lon = 158.93835, lat = -54.49871),
               readxl::read_excel("Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
   dplyr::rename(location = colony, lon = long) |> dplyr::select(-date))
 
-tabl <- tabl[1:4, ]
 
 source("R/functions.R")
 list(
   tar_target(bufy, 3000),
-  tar_target(daterange, c(as.Date("2025-01-01"), Sys.Date())),
+  tar_target(daterange, c(as.Date("2017-01-01"), Sys.Date())),
   tar_target(lon, tabl$lon), tar_target(lat, tabl$lat), tar_target(location, tabl$location),
   tar_target(extent, mkextent(lon, lat, bufy), pattern = map(lon, lat)), 
   tar_target(xmin, extent[1], pattern = map(extent)),
@@ -51,12 +53,13 @@ list(
   tar_target(crs, mk_crs(lon, lat), pattern = map(lon, lat)),
   tar_target(llex, mk_ll_extent(c(xmin, xmax, ymin, ymax), crs), pattern = map(xmin, xmax, ymin, ymax, crs)),
   tar_target(stac_json, getstac(llex, daterange, location, crs), pattern = map(llex, location, crs)),
-  tar_target(assets,  stac_json |> dplyr::arrange(location, datetime) |>  dplyr::mutate(solarday = as.Date(datetime - localnoon)) |> 
+  tar_target(assets,  stac_json |> dplyr::arrange(location, datetime) |>   
                dplyr::group_by(location, solarday) |> tar_group(), iteration = "group")
   , tar_target(cloud, build_cloud(assets, 10, c(-1, 1, -1, 1) * 3000),  pattern = map(assets),  iteration = "list")
   , tar_target(cloud_filter, unlist(lapply(cloud, filter_fun), use.names = F))
   , tar_target(assets_to_image, assets |> dplyr::filter(tar_group %in% which(cloud_filter)), iteration = "group")
-  , tar_target(image, build_image(assets_to_image, 10, c(-3000, 3000, -3000, 3000)), pattern = map(assets_to_image), iteration = "list")
+  , tar_target(assets_crs, assets_to_image |> dplyr::mutate(crs = purrr::map_chr(crs, gdalraster::srs_to_wkt)))
+  , tar_target(image, build_image(assets_crs, 10, c(-3000, 3000, -3000, 3000)), pattern = map(assets_crs), iteration = "list")
 )
   
 

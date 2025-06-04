@@ -1,3 +1,10 @@
+set_gdal_envs <- function() {
+  Sys.setenv("GDAL_HTTP_MAX_RETRY" = "4")
+  Sys.setenv("GDAL_DISABLE_READDIR_ON_OPEN" = "EMPTY_DIR")
+  Sys.setenv("GDAL_HTTP_RETRY_DELAY" = "10")
+  invisible(NULL)
+}
+
 localproj <- function(x) {
   sprintf("+proj=laea +lon_0=%f +lat_0=%f", x[1], x[2])
 }
@@ -26,8 +33,8 @@ getstac <- function(llex, date, location, crs) {
   if (inherits(js, "try-error")) return(data.frame())
   out <- tibble::as_tibble(lapply(js$features$assets, \(.x) .x$href))
   out$datetime <- as.POSIXct(strptime(js$features$properties$datetime, "%Y-%m-%dT%H:%M:%OSZ"), tz = "UTC")
-  
-  out$localnoon <- js$features$properties$`proj:centroid`[,1L, drop = TRUE] / 15
+  ## had to google my own notes for this ... https://github.com/mdsumner/tacky/issues/2
+  out$solarday <- as.Date(round(out$datetime - (mean(llex[1:2])/15 * 3600), "days"))
   out$llxmin <- llex[1]
   out$llxmax <- llex[2]
   
@@ -41,15 +48,13 @@ getstac <- function(llex, date, location, crs) {
 ## build the image
 build_cloud <- function(assets, res, ex) {
   
-  Sys.setenv("GDAL_DISABLE_READDIR_ON_OPEN" = "EMPTY_DIR")
-  
+  set_gdal_envs()
   cloud <- sprintf("/vsicurl/%s", assets$cloud)
   vapour::gdal_raster_data(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex)
 }
 
 warp_and_read <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = NULL, target_dim = NULL) {
-  Sys.setenv("GDAL_DISABLE_READDIR_ON_OPEN" = "EMPTY_DIR")
-  
+  set_gdal_envs()
   dsn <- sprintf("/vsicurl/%s", dsn)
   args <- character()
   t_srs <- ""
@@ -68,17 +73,18 @@ warp_and_read <- function(dsn, target_ext = NULL, target_crs = NULL, target_res 
     target_dim <- rep(target_dim, length.out = 2L)
     args <- c(args, "-ts", target_dim)
   }
- 
+ #t_srs <- gdalraster::srs_to_wkt(t_srs)
   chk <- gdalraster::warp(dsn, tf <- tempfile(fileext = ".tif", tmpdir = "/vsimem"), t_srs = t_srs, cl_arg = args, quiet = TRUE)
   x <- gdalraster::read_ds(new(gdalraster::GDALRaster, tf))
   x
 }
 build_image <- function(assets, res, ex) {
-  Sys.setenv("GDAL_DISABLE_READDIR_ON_OPEN" = "EMPTY_DIR")
-  
+  set_gdal_envs()
   crs <- assets$crs[1]
+  
   bands <- vector("list", 3)
   bandnames <- c("red", "green", "blue")
+  ## didn't like use of gdalraster::srs_to_wkt here ??
   for (i in seq_along(bandnames)) {
     bands[[i]] <- warp_and_read(assets[[bandnames[i]]], target_crs = crs, target_res = res, target_ext = ex)
   }
