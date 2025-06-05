@@ -4,18 +4,45 @@ set_gdal_envs <- function() {
   Sys.setenv("GDAL_HTTP_RETRY_DELAY" = "10")
   invisible(NULL)
 }
+## wh  ## from lonlat + radius
+## duration (from the past to now)
+# wh <- function(pt, r = 5000) {
+#   mkextent(pt[1], pt[2], bufy = r, bufx = r)
+# }
+duration <- function(x = 3600 * 24 * 365.25) {
+  Sys.time() + c(-x, 0)
+}
 
+stac_time <- function(x = 3600 * 24 * 365.25) {
+  duration(x)
+}
+
+stac_date <- function(x = 365.25) {
+  duration(x * 24 * 3600)
+}
+unproj <- function(x, source) {
+  out <- x * NA_real_
+  source <- rep(source, length.out = nrow(x))
+  for (i in seq_len(nrow(x))) {
+    out[i, ] <- reproj::reproj_extent(x[i, ], "EPSG:4326", source = source[i])
+  }
+  out
+}
 localproj <- function(x) {
   sprintf("+proj=laea +lon_0=%f +lat_0=%f", x[1], x[2])
 }
 ## build the extent
-mkextent <- function(lon, lat, bufy = 3000, bufx = NULL) {
+mkextent <- function(lon, lat, bufy = 3000, bufx = NULL, cosine = FALSE) {
   pt <- cbind(lon, lat)
-  if (is.null(bufx)) {
-    cs <- 1/cos(pt[2] * pi / 180)
+  bufy <- rep(bufy, length.out = nrow(pt))
+  if (!is.null(bufx)) bufx <- rep(bufx, length.out = nrow(pt))
+  if (cosine) {
+    cs <- 1/cos(pt[,2L, drop = TRUE] * pi / 180)
     bufx <- bufy * cs
+  } else {
+    bufx <- bufy
   }
-  c(-bufx, bufx, -bufy, bufy)
+  cbind(-bufx, bufx, -bufy, bufy)
 }
 mk_crs <- function(lon, lat) {
   pt <- cbind(lon, lat)
@@ -26,31 +53,59 @@ mk_ll_extent <- function(ex, crs) {
   llex
 }
 ## get the available dates
-getstac <- function(llex, date, location, crs) {
-  qu <- sds::stacit(llex, date)
+getstac_json <- function(x) {
+  llnames <- c("lonmin", "lonmax", "latmin", "latmax")
+  dtnames <- c("start", "end")
+  llex <- unlist(x[llnames])
+  date <- c(x[[dtnames[1]]], x[[dtnames[2]]])
+  qu <- sds::stacit(llex, date, limit = 300)
   js <- try(jsonlite::fromJSON(qu))
-  
   if (inherits(js, "try-error")) return(data.frame())
+ js 
+}
+ 
+# mkstac_table <- function(x) {
+#   
+#   ## x is a dataframe with each element for getstac
+#   getstac_json(unlist(x[llnames]), c(x[[dtnames[1]]], x[[dtnames[2]]]))
+# }
+
+process_stac_table <- function(js, llex, location, crs, extent) {
   out <- tibble::as_tibble(lapply(js$features$assets, \(.x) .x$href))
   out$datetime <- as.POSIXct(strptime(js$features$properties$datetime, "%Y-%m-%dT%H:%M:%OSZ"), tz = "UTC")
   ## had to google my own notes for this ... https://github.com/mdsumner/tacky/issues/2
-  out$solarday <- as.Date(round(out$datetime - (mean(llex[1:2])/15 * 3600), "days"))
+  out$centroid_lon <- js$features$properties$`proj:centroid`[,2]
+  out$centroid_lat <- js$features$properties$`proj:centroid`[,1]
+  
+  out$solarday <- as.Date(round(out$datetime - (out$centroid_lon/15 * 3600), "days"))
   out$llxmin <- llex[1]
   out$llxmax <- llex[2]
   
   out$llymin <- llex[3]
   out$llymax <- llex[4]
+  out$xmin <- extent[1]
+  out$xmax <- extent[2]
+  out$ymin <- extent[3]
+  out$ymax <- extent[4]
+  
   out$location <- location
   out$crs <- crs
   dplyr::arrange(out, location, datetime)
 }
 
+
+
 ## build the image
-build_cloud <- function(assets, res, ex) {
-  
+build_cloud <- function(assets, res = 10) {
+  tmpdir <- "/perm_storage/home/data/_targets_sentineltifs"
+ # dir.create(tmpdir)
+  tf <- tempfile(fileext = ".tif", tmpdir = tmpdir)
   set_gdal_envs()
-  cloud <- sprintf("/vsicurl/%s", assets$cloud)
-  vapour::gdal_raster_data(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex)
+  exnames <- c("xmin", "xmax", "ymin", "ymax")
+  ## every group of rows has a single extent
+  ex <- unlist(assets[1L, exnames], use.names = FALSE)
+  cloud <- sprintf("/vsicurl/%s", assets$scl)
+  vapour::gdal_raster_dsn(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = tf)
 }
 
 warp_and_read <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = NULL, target_dim = NULL) {
@@ -78,9 +133,13 @@ warp_and_read <- function(dsn, target_ext = NULL, target_crs = NULL, target_res 
   x <- gdalraster::read_ds(new(gdalraster::GDALRaster, tf))
   x
 }
-build_image <- function(assets, res, ex) {
+build_image <- function(assets, res) {
   set_gdal_envs()
   crs <- assets$crs[1]
+  
+  exnames <- c("xmin", "xmax", "ymin", "ymax")
+  ## every group of rows has a single extent
+  ex <- unlist(assets[1L, exnames], use.names = FALSE)
   
   bands <- vector("list", 3)
   bandnames <- c("red", "green", "blue")
@@ -98,6 +157,11 @@ build_image <- function(assets, res, ex) {
 }
 mtrx <- function(x) {
   as.vector(matrix(x, attr(x, "gis")$dim[2L], byrow = TRUE))
+}
+read_dsn <- function(x) {
+  ds <- new(gdalraster::GDALRaster, x)
+  on.exit(ds$close(), add = TRUE)
+  gdalraster::read_ds(ds)
 }
 filter_fun <- function(.x) {
   .x <- unlist(.x, use.names = F)
