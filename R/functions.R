@@ -1,3 +1,19 @@
+nicebbox <- function(dat, min = .05, max = 1) {
+  ex <- c(range(dat[,1, drop = TRUE]), range(dat[, 2, drop = TRUE]))
+  dif <- diff(ex)[c(1, 3)]
+  if (any(dif < min)) {
+    f <- min
+  }
+  if (any(dif > max)) {
+    f <- max
+  }
+  ## take the middle and give it the result
+  cs <- 1/cos(mean(ex[3:4]) * pi/180)
+  out <- rep(c(mean(ex[1:2]), mean(ex[3:4])), each = 2L) + c(-cs,cs, -1, 1) * f
+  out
+  
+}
+
 #' Plot raster at native resolution
 #'
 #' Determines the current device size and plots the raster centred on its own
@@ -82,6 +98,11 @@ mkextent <- function(lon, lat, bufy = 3000, bufx = NULL, cosine = FALSE) {
   }
   cbind(-bufx, bufx, -bufy, bufy)
 }
+mkextent_crs <- function(lon, lat, bufy = 3000, bufx = 3000, crs) {
+  ex <- mkextent(lon, lat, bufy, bufx)
+  gdalraster::transform_bounds(ex[c(1, 3, 2, 4)], srs_to = "EPSG:4326", srs_from  = mk_crs(lon, lat))[c(1, 3, 2, 4)]
+}
+
 mk_crs <- function(lon, lat) {
   pt <- cbind(lon, lat)
   localproj(pt)
@@ -98,7 +119,7 @@ getstac_json <- function(x) {
   date <- c(x[[dtnames[1]]], x[[dtnames[2]]])
   qu <- sds::stacit(llex, date, limit = 300)
   js <- try(jsonlite::fromJSON(qu))
-  if (inherits(js, "try-error")) return(data.frame())
+  if (inherits(js, "try-error") || js$numberReturned < 1) return(data.frame())
  js 
 }
  
@@ -136,15 +157,20 @@ process_stac_table <- function(js, llex, location, crs, extent) {
 ## build the image
 build_cloud <- function(assets, res = 10, div = NULL) {
   out <- try({
-  tmpdir <- "/perm_storage/home/data/_targets_sentineltifs"
- # dir.create(tmpdir)
+  tmpdir <- tempdir()
+  dir.create(tmpdir)
   tf <- tempfile(fileext = ".tif", tmpdir = tmpdir)
   set_gdal_envs()
   exnames <- c("xmin", "xmax", "ymin", "ymax")
   ## every group of rows has a single extent
   ex <- unlist(assets[1L, exnames], use.names = FALSE)
-  ## this only works for our crafted extents
-  if (!is.null(div)) ex <- ex/div
+  if (!is.null(div))  {
+    ## this only works for our crafted extents
+    #ex <- ex/div
+    dxdy <- diff(ex)[c(1, 3)]/div / 2
+    middle <- c(mean(ex[1:2]), mean(ex[3:4]))
+    ex <- c(middle[1] - dxdy[1], middle[1] + dxdy[1], middle[2] - dxdy[2], middle[2] + dxdy[2])
+  }
   cloud <- sprintf("/vsicurl/%s", assets$scl)
   vapour::gdal_raster_dsn(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = tf)
   })
@@ -283,7 +309,7 @@ read_dsn <- function(x) {
 filter_fun <- function(.x) {
   if (is.null(.x)) return(FALSE)
   .x <- unlist(.x, use.names = F)
-  if (all(is.na(.x))) return(TRUE)
+  if (all(is.na(.x))) return(FALSE)
   ## 0, 1, 2, 3, 
   mean(.x %in%  c(1, 3, 8, 9, 10), na.rm = TRUE) < .4
 }
