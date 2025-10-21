@@ -60,21 +60,21 @@ list(
                   lonmin = ll_extent[,1L], lonmax = ll_extent[,2L], latmin = ll_extent[,3L], latmax = ll_extent[,4L], 
                   xmin = extent[,1L], xmax = extent[,2L], ymin = extent[,3L], ymax = extent[,4L]) |> 
                dplyr::mutate(tar_group = dplyr::row_number()))
-#   tar_target(stac_json, getstac_json(qtable), pattern = map(qtable), iteration = "list"),
-#   tar_target(stac_tables, process_stac_table(stac_json, ll_extent, location, crs, extent), pattern = map(stac_json, ll_extent, location, crs, extent), iteration = "list"), 
-#   tar_target(images_table, dplyr::bind_rows(stac_tables) |> dplyr::group_by(location, solarday) |> tar_group(), iteration = "group"), 
+  ,tar_target(stac_json, getstac_json(qtable), pattern = map(qtable), iteration = "list")
+  ,tar_target(stac_tables, process_stac_table(stac_json, ll_extent, location, crs, extent), pattern = map(stac_json, ll_extent, location, crs, extent), iteration = "list")
+  ,tar_target(images_table, dplyr::bind_rows(stac_tables) |> dplyr::group_by(location, solarday) |> tar_group(), iteration = "group")
 #  # tar_target(images_table0, dplyr::filter(images_table, location %in%  c("Heard", "Macquarie")) |> dplyr::group_by(location, solarday) |> tar_group(), iteration = "group"),  
-#   tar_target(cloud_tifs, build_cloud(images_table, res = 10, div = 2), pattern = map(images_table),  iteration = "list"),
+   ,tar_target(cloud_tifs, build_cloud(images_table, res = 10, div = 2), pattern = map(images_table),  iteration = "list")
 #   ## [[1]] because output of read_dsn() is a list (each has its own attributes, which you can't do on atomic vector)
-#  tar_target(cloud_filter, filter_fun(read_dsn(cloud_tifs)), pattern = map(cloud_tifs), iteration = "vector"), 
-#  tar_target(filter_table, 
-#              images_table |> dplyr::filter(tar_group %in% which(cloud_filter)) |> 
-#                dplyr::group_by(location, solarday) |> tar_group(), 
-#              iteration = "group"),
-# 
+ ,tar_target(cloud_filter, filter_fun(read_dsn(cloud_tifs)), pattern = map(cloud_tifs), iteration = "vector")
+ ,tar_target(filter_table,
+             images_table |> dplyr::filter(tar_group %in% which(cloud_filter)) |>
+               dplyr::group_by(location, solarday) |> tar_group(),
+             iteration = "group")
+
 # #tar_target(images, build_image(images_table0 , res = 10), pattern = map(images_table0), iteration = "list")
 # ## finally, filter these by var(iance) there's a bunch that are NA
-# tar_target(images, build_image_dsn(filter_table , res = 10), pattern = map(filter_table), iteration = "list")
+, tar_target(result, build_image_dsn(filter_table , res = 10), pattern = map(filter_table))
 )
 
 # library(furrr)

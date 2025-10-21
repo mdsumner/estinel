@@ -240,8 +240,7 @@ build_image_dsn <- function(assets, res, resample = "near") {
   # writeLines(jsontext, jsonfile)
   # 
 
-  
-  outfile
+  tibble::tibble(outfile = outfile,  location = assets$location[1], solarday = assets$solarday[1], assets = list(assets))
 
 }
 
