@@ -19,17 +19,7 @@ tar_option_set(
 tar_source()
 # tar_source("other_functions.R") # Source other scripts as needed.
 
-cleanup_table <- function() {
-  x <- readxl::read_excel("Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
-     dplyr::rename(location = colony, lon = long) |> dplyr::select(-date)
-  stp <- unlist(gregexpr("[\\[\\(]", x$location)) -1
-  stp[stp < 0] <- nchar(x$location[stp < 0])
-  x$location <- substr(x$location, 1, stp)
-  x$location <- trimws(x$location)
-  x$location <- gsub("\\s+", "_", x$location, perl = TRUE)
-  x$location <- gsub("é", "e", x$location)
-  x
-}
+
 
 # Replace the target list below with your own:
 list(

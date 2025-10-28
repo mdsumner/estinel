@@ -1,3 +1,16 @@
+cleanup_table <- function() {
+  x <- readxl::read_excel("Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
+    dplyr::rename(location = colony, lon = long) |> dplyr::select(-date)
+  stp <- unlist(gregexpr("[\\[\\(]", x$location)) -1
+  stp[stp < 0] <- nchar(x$location[stp < 0])
+  x$location <- substr(x$location, 1, stp)
+  x$location <- trimws(x$location)
+  x$location <- gsub("\\s+", "_", x$location, perl = TRUE)
+  x$location <- gsub("é", "e", x$location)
+  x
+}
+
+
 nicebbox <- function(dat, min = .05, max = 1) {
   ex <- c(range(dat[,1, drop = TRUE]), range(dat[, 2, drop = TRUE]))
   dif <- diff(ex)[c(1, 3)]

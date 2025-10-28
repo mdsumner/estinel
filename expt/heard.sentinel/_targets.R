@@ -39,7 +39,7 @@ list(
  tar_target(ll_extent, 
             gdalraster::transform_bounds(gridextent[c(1, 3, 2, 4)], srs_to = "EPSG:4326", srs_from = gridcrs)[c(1, 3, 2, 4)], 
             pattern = map(gridextent), iteration = "list"),
- tar_target(daterange, format(as.POSIXct(c(as.POSIXct("2023-06-23 00:00:00", tz = "UTC"), Sys.time())))),
+ tar_target(daterange, format(as.POSIXct(c(as.POSIXct("2015-06-23 00:00:00", tz = "UTC"), Sys.time())))),
 
   #tar_target(ll_extent, mkextent_crs(loncentre, latcentre, bufy = 3000, bufx = 3000, crs), pattern = map(loncentre, latcentre), iteration = "list"),
  tar_target(lonmin, ll_extent[1], pattern = map(ll_extent)), tar_target(lonmax, ll_extent[2], pattern = map(ll_extent)),
