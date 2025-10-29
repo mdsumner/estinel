@@ -1,3 +1,5 @@
+
+
 cleanup_table <- function() {
   x <- readxl::read_excel("Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
     dplyr::rename(location = colony, lon = long) |> dplyr::select(-date)
@@ -10,7 +12,10 @@ cleanup_table <- function() {
   x
 }
 
-
+filter_the_table <- function(x, cfilter) {
+  dplyr::filter(x, tar_group %in% which(cfilter)) |>
+    dplyr::group_by(location, solarday)
+}
 nicebbox <- function(dat, min = .05, max = 1) {
   ex <- c(range(dat[,1, drop = TRUE]), range(dat[, 2, drop = TRUE]))
   dif <- diff(ex)[c(1, 3)]
@@ -171,7 +176,11 @@ process_stac_table <- function(js, llex, location, crs, extent) {
 build_cloud <- function(assets, res = 10, div = NULL) {
   out <- try({
   tmpdir <- tempdir()
-  dir.create(tmpdir)
+  if (!dir.exists(tmpdir)) {
+    if (!is_cloud(tmpdir)) {
+     dir.create(tmpdir, showWarnings = FALSE, recursive = TRUE)
+    }
+  }
   tf <- tempfile(fileext = ".tif", tmpdir = tmpdir)
   set_gdal_envs()
   exnames <- c("xmin", "xmax", "ymin", "ymax")
@@ -213,11 +222,12 @@ warp_to_dsn <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = 
     args <- c(args, "-ts", target_dim)
   }
   #t_srs <- gdalraster::srs_to_wkt(t_srs)
-  chk <- gdalraster::warp(dsn, tf <- tempfile(fileext = ".tif", tmpdir = "/vsimem"), t_srs = t_srs, cl_arg = args, quiet = TRUE)
+  chk <- gdalraster::warp(dsn, tf <- tempfile(fileext = ".tif"), t_srs = t_srs, cl_arg = args, quiet = TRUE)
   #x <- gdalraster::read_ds(new(gdalraster::GDALRaster, tf))
   tf
 }
-build_image_dsn <- function(assets, res, resample = "near") {
+build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
+  root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
   set_gdal_envs()
   crs <- assets$crs[1]
   
@@ -229,38 +239,36 @@ build_image_dsn <- function(assets, res, resample = "near") {
   bandnames <- c("red", "green", "blue")
   ## didn't like use of gdalraster::srs_to_wkt here ??
   for (i in seq_along(bandnames)) {
-    bands[[i]] <- warp_to_dsn(assets[[bandnames[i]]], target_crs = crs, target_res = res, target_ext = ex, resample = resample)
+    bands[[i]] <- warp_to_dsn(assets[[bandnames[i]]], target_crs = crs, target_res = res, target_ext = ex, resample = resample)[[1]]
   }
   vrt <- vapour::buildvrt(unlist(bands))
   location <- assets$location[1L]
-  outfile <- sprintf("/perm_storage/home/data/_targets_locationtifs/sentinel-2-c1-l2a/%s/%s_%s.tif", format(assets$solarday[1], "%Y/%m/%d"), location, format(assets$solarday[1]))
-  if (!fs::dir_exists(dirname(outfile))) fs::dir_create(dirname(outfile))
-  gdalraster::translate(vrt, outfile, cl_arg = c("-co", "COMPRESS=DEFLATE", "-co", "TILED=NO"))
-  outpng <- sprintf("/perm_storage/home/data/_targets_locationpngs/sentinel-2-c1-l2a/%s/%s_%s.png", format(assets$solarday[1], "%Y/%m/%d"), location, format(assets$solarday[1]))
-  if (!fs::dir_exists(dirname(outpng))) fs::dir_create(dirname(outpng))
-  r <- terra::stretch(terra::rast(outfile))
-  fs::dir_create(dirname(outpng))
-  terra::writeRaster(r, outpng, overwrite = T)
-  ## when making this s3 we can drop the substitution
-  # jsontext <- gsub("href\": \"idea-sentinel2-locations", "href\": \"https://projects.pawsey.org.au/idea-sentinel2-locations", json$dumps(stac$create_stac_item(outfile, date, collection = "idea-sentinel2-locations", with_proj = TRUE, with_raster = FALSE)$to_dict()))
-  # jsonfile <- sprintf("%s-stac-item.json", outfile)
-  # writeLines(jsontext, jsonfile)
-  # 
-  # 
-  # outfile2 <- sprintf("/perm_storage/home/data/_targets_locationtifs/sentinel-2-c1-l2a/%s/%s_%s_stretch.tif", format(assets$solarday[1], "%Y/%m/%d"), location, format(assets$solarday[1]))
-  # out2 <- terra::stretch(log(terra::rast(outfile)))
-  # terra::writeRaster(out2, outfile2, datatype = "INT1U", gdal = c("COMPRESS=DEFLATE", "TILED=NO"), overwrite = TRUE)
-  # 
-  # date <- as.POSIXct(stringr::str_extract(basename(outfile2), "[0-9]{4}\\-[0-9]{2}\\-[0-9]{2}"), tz = "UTC")
-  # jsontext <- gsub("href\": \"idea-sentinel2-locations", "href\": \"https://projects.pawsey.org.au/idea-sentinel2-locations", json$dumps(stac$create_stac_item(outfile2, date, collection = "idea-sentinel2-locations", with_proj = TRUE, with_raster = FALSE)$to_dict()))
-  # jsonfile <- sprintf("%s-stac-item.json", outfile2)
-  # writeLines(jsontext, jsonfile)
-  # 
+   outfile <- sprintf("%s/%s_%s.tif", root, location, format(assets$solarday[1]))
+   if (!is_cloud(root)) {
+      if (!fs::dir_exists(root)) dir.create(root, showWarnings = FALSE, recursive = TRUE)
+  }
+  gdalraster::translate(vrt, outfile, 
+          cl_arg = c( "-co", "COMPRESS=DEFLATE", "-co", "TILED=NO"))
 
-  tibble::tibble(outfile = outfile, outpng = outpng, location = assets$location[1], solarday = assets$solarday[1], assets = list(assets))
+  tibble::tibble(outfile = outfile, location = assets$location[1], clear_test = assets$clear_test[1], solarday = assets$solarday[1], assets = list(assets))
 
 }
-
+is_cloud <- function(x) {
+  grepl("^/vsi", x)
+}
+build_image_png <- function(dsn) {
+  outpng <- gsub("tif$", "png", dsn)
+  if (!fs::dir_exists(dirname(outpng))) {
+    if (!is_cloud(outpng))  {
+      fs::dir_create(dirname(outpng))
+    }
+  }
+  writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
+  #r <- terra::rast(dsn, raw = TRUE)
+  #terra::writeRaster(terra::stretch(r), outpng, overwrite = TRUE, gdal=c("WORLDFILE=YES"), datatype = "1INT1U")
+  gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
+  outpng
+}
 
 
 # warp_and_read <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = NULL, target_dim = NULL, resample = "near") {
@@ -327,7 +335,7 @@ filter_fun <- function(.x) {
   .x <- unlist(.x, use.names = F)
   if (all(is.na(.x))) return(FALSE)
   ## 0, 1, 2, 3, 
-  mean(.x %in%  c(1, 3, 8, 9, 10), na.rm = TRUE) < .4
+  mean(.x %in%  c(1, 3, 8, 9, 10), na.rm = TRUE) 
 }
 qm <- function(x, target_dim = c(1024, 0), target_crs = NULL, target_ext = NULL,target_res = NULL,..., scale = F, band_output_type = "raw") {
   dsn <- sprintf("/vsicurl/%s", x)
