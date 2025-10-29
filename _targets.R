@@ -1,23 +1,15 @@
-# Created by use_targets().
-# Follow the comments below to fill in this target script.
-# Then follow the manual to check and run the pipeline:
-#   https://books.ropensci.org/targets/walkthrough.html#inspect-the-pipeline
 
 # Load packages required to define the pipeline:
 library(targets)
-library(tarchetypes)
-library(crew)
-
+pkgs <- c("tarchetypes", "crew", "reproj", "sds", "jsonlite", "vapour", "targets")
 # Set target options:
 tar_option_set(
-  packages = c("reproj", "sds", "jsonlite", "targets"), # Packages that your targets need for their tasks.
+  packages = pkgs,
    format = "qs", # Optionally set the default storage format. qs is fast.
-   controller = crew_controller_local(workers = 30)
+   controller = crew::crew_controller_local(workers = 30)
 )
 
-# Run the R scripts in the R/ folder with your custom functions:
 tar_source()
-# tar_source("other_functions.R") # Source other scripts as needed.
 
 
 
@@ -32,11 +24,11 @@ list(
                                  data.frame(location = "Mawson", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
                                  data.frame(location = "Macquarie", lon = 158.93835, lat = -54.49871)
                                 , cleanup_table() 
-  )),
+  )[1, ]),
   
   tar_target(radiusy, 3000), tar_target(radiusx, radiusy),
   #tar_target(daterange, stac_date(365)),
-  tar_target(daterange, format(as.POSIXct(c(as.POSIXct("2015-06-23 00:00:00", tz = "UTC"), Sys.time())))),
+  tar_target(daterange, format(as.POSIXct(c(as.POSIXct("2025-06-23 00:00:00", tz = "UTC"), Sys.time())))),
   tar_target(lon, tabl$lon), tar_target(lat, tabl$lat), tar_target(location, tabl$location),
   tar_target(crs, mk_crs(lon, lat), pattern = map(lon, lat), iteration = "vector"),
   ## note that mkextent and unproj are vectorized over matrix rows
@@ -67,21 +59,3 @@ list(
 , tar_target(result, build_image_dsn(filter_table , res = 10), pattern = map(filter_table))
 )
 
-# library(furrr)
-# options(parallelly.fork.enable = TRUE, future.rng.onMisuse = "ignore")
-# library(furrr); plan(multicore)
-# b <- furrr::future_map_lgl(seq_len(lengths(tar_meta(images)$children)), \(.x) is.na(var(tar_read("images", branches = .x)[[1]], na.rm  = T)))
-# plan(sequential)
-# idx <- which(!b)
-# 
-# bf <- 250
-#imtab <- distinct(tar_read(filter_table), tar_group, location, solarday) |> arrange(tar_group) 
-# #for (i in seq_len(nrow(imtab))) {
-# for (i in 18:nrow(imtab)) {
-#   ximage(log(tar_read(images, branches = imtab$tar_group[i])[[1]]), asp = 1);
-#   title(sprintf("%s: %s", imtab$location[i], imtab$solarday[i])); #rect(-bf, -bf, bf, bf, lty = 2, border = "hotpink");
-#   scan("", 1)
-# }
-
-
-# 

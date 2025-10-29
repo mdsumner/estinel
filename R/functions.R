@@ -234,9 +234,13 @@ build_image_dsn <- function(assets, res, resample = "near") {
   vrt <- vapour::buildvrt(unlist(bands))
   location <- assets$location[1L]
   outfile <- sprintf("/perm_storage/home/data/_targets_locationtifs/sentinel-2-c1-l2a/%s/%s_%s.tif", format(assets$solarday[1], "%Y/%m/%d"), location, format(assets$solarday[1]))
-  fs::dir_create(dirname(outfile))
+  if (!fs::dir_exists(dirname(outfile))) fs::dir_create(dirname(outfile))
   gdalraster::translate(vrt, outfile, cl_arg = c("-co", "COMPRESS=DEFLATE", "-co", "TILED=NO"))
-  
+  outpng <- sprintf("/perm_storage/home/data/_targets_locationpngs/sentinel-2-c1-l2a/%s/%s_%s.png", format(assets$solarday[1], "%Y/%m/%d"), location, format(assets$solarday[1]))
+  if (!fs::dir_exists(dirname(outpng))) fs::dir_create(dirname(outpng))
+  r <- terra::stretch(terra::rast(outfile))
+  fs::dir_create(dirname(outpng))
+  terra::writeRaster(r, outpng, overwrite = T)
   ## when making this s3 we can drop the substitution
   # jsontext <- gsub("href\": \"idea-sentinel2-locations", "href\": \"https://projects.pawsey.org.au/idea-sentinel2-locations", json$dumps(stac$create_stac_item(outfile, date, collection = "idea-sentinel2-locations", with_proj = TRUE, with_raster = FALSE)$to_dict()))
   # jsonfile <- sprintf("%s-stac-item.json", outfile)
@@ -253,7 +257,7 @@ build_image_dsn <- function(assets, res, resample = "near") {
   # writeLines(jsontext, jsonfile)
   # 
 
-  tibble::tibble(outfile = outfile,  location = assets$location[1], solarday = assets$solarday[1], assets = list(assets))
+  tibble::tibble(outfile = outfile, outpng = outpng, location = assets$location[1], solarday = assets$solarday[1], assets = list(assets))
 
 }
 

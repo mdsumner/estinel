@@ -11,8 +11,8 @@ extent_tile <- function(sentinelurl) {
 }
 
 
-im <- "https://e84-earth-search-sentinel-data.s3.us-west-2.amazonaws.com/sentinel-2-c1-l2a/43/F/CA/2024/5/S2B_T43FCA_20240524T044328_L2A/B04.tif"
-
-im <- sample(images_table$red, 1)
-extent_tile(im)
-new(gdalraster::GDALRaster, sprintf("/vsicurl/%s", im))$bbox()[c(1, 3, 2, 4)]
+# im <- "https://e84-earth-search-sentinel-data.s3.us-west-2.amazonaws.com/sentinel-2-c1-l2a/43/F/CA/2024/5/S2B_T43FCA_20240524T044328_L2A/B04.tif"
+# 
+# im <- sample(images_table$red, 1)
+# extent_tile(im)
+# new(gdalraster::GDALRaster, sprintf("/vsicurl/%s", im))$bbox()[c(1, 3, 2, 4)]
