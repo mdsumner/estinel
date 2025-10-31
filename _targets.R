@@ -21,8 +21,8 @@ Sys.setenv(AWS_ACCESS_KEY_ID = Sys.getenv("PAWSEY_AWS_ACCESS_KEY_ID"),
            AWS_VIRTUAL_HOSTING = "NO")
 
 
-ncpus <- 28
-#log_directory <- "_targets/logs"
+ncpus <- 14
+log_directory <- "_targets/logs"
 # Set target options:
 laws <- list(repository = "aws",
              resources = tar_resources(
@@ -34,7 +34,9 @@ laws <- list(repository = "aws",
              ))
 
 tar_option_set(
-  controller = if (ncpus <= 1) NULL else crew_controller_local(workers = ncpus),
+  controller = if (ncpus <= 1) NULL else crew_controller_local(workers = ncpus
+#      ,options_local = crew_options_local(log_directory  = log_directory)
+      ),
   format = "qs",
   packages =pkgs
 )
@@ -43,6 +45,7 @@ tar_option_set(
 tar_assign(
   {
   tabl <-  rbind(
+    data.frame(location = "Hobart", lon = 147.3257, lat = 42.8826), 
     data.frame(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600)), 
                                  data.frame(location = "Casey_Station", 
                                            lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
@@ -50,7 +53,7 @@ tar_assign(
                                  data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
                                  data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871)
                                 , cleanup_table() 
-  ) |> tar_target()
+  )[1, ] |> tar_target()
   
   radiusy <- 3000 |> tar_target()
   radiusx <- radiusy |> tar_target()
@@ -82,7 +85,7 @@ tar_assign(
 # 
 cloud_filter <- filter_fun(read_dsn(cloud_tifs)) |> tar_target(pattern = map(cloud_tifs), iteration = "vector")
 #  #
- filter_table  <- images_table |> mutate(clear_test = cloud_filter[tar_group])  |>  tar_target()
+ filter_table  <- images_table |> mutate(scl_tif = cloud_tifs[tar_group], clear_test = cloud_filter[tar_group])  |>  tar_target()
  group_table <- filter_table |>
      group_by(location, solarday) |> tar_group() |>
      tar_target(iteration = "group")
