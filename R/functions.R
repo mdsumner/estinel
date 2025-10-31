@@ -129,13 +129,15 @@ mk_ll_extent <- function(ex, crs) {
   llex <- reproj::reproj_extent(ex, "EPSG:4326", source = crs)
   llex
 }
-## get the available dates
-getstac_json <- function(x) {
+getstac_query <- function(x, limit = 300) {
   llnames <- c("lonmin", "lonmax", "latmin", "latmax")
   dtnames <- c("start", "end")
   llex <- unlist(x[llnames])
   date <- c(x[[dtnames[1]]], x[[dtnames[2]]])
-  qu <- sds::stacit(llex, date, limit = 300)
+  sds::stacit(llex, date, limit = limit)
+}
+## get the available dates
+getstac_json <- function(qu) {
   js <- try(jsonlite::fromJSON(qu))
   if (inherits(js, "try-error") || js$numberReturned < 1) return(data.frame())
  js 
@@ -147,41 +149,69 @@ getstac_json <- function(x) {
 #   getstac_json(unlist(x[llnames]), c(x[[dtnames[1]]], x[[dtnames[2]]]))
 # }
 
-process_stac_table <- function(js, llex, location, crs, extent) {
-  out <- tibble::as_tibble(lapply(js$features$assets, \(.x) .x$href))
-  out$datetime <- as.POSIXct(strptime(js$features$properties$datetime, "%Y-%m-%dT%H:%M:%OSZ"), tz = "UTC")
+# process_stac_table <- function(js, llex, location, crs, extent) {
+#   out <- tibble::as_tibble(lapply(js$features$assets, \(.x) .x$href))
+#   out$datetime <- as.POSIXct(strptime(js$features$properties$datetime, "%Y-%m-%dT%H:%M:%OSZ"), tz = "UTC")
+#   ## had to google my own notes for this ... https://github.com/mdsumner/tacky/issues/2
+#   out$centroid_lon <- js$features$properties$`proj:centroid`[,2]
+#   out$centroid_lat <- js$features$properties$`proj:centroid`[,1]
+#   
+#   out$solarday <- as.Date(round(out$datetime - (out$centroid_lon/15 * 3600), "days"))
+#   out$llxmin <- llex[1]
+#   out$llxmax <- llex[2]
+#   
+#   out$llymin <- llex[3]
+#   out$llymax <- llex[4]
+#   out$xmin <- extent[1]
+#   out$xmax <- extent[2]
+#   out$ymin <- extent[3]
+#   out$ymax <- extent[4]
+#   
+#   out$location <- location
+#   out$crs <- crs
+#   outa <- try(dplyr::arrange(out, location, datetime) |> dplyr::filter(!is.na(red)))
+#   if (inherits(outa, "try-error")) NULL else outa
+# }
+
+process_stac_table2 <- function(table) {
+  js <- table[["js"]][[1]]
+  hrefs <- tibble::as_tibble(lapply(js$features$assets, \(.x) .x$href))
+  hrefs$datetime <- as.POSIXct(strptime(js$features$properties$datetime, "%Y-%m-%dT%H:%M:%OSZ"), tz = "UTC")
   ## had to google my own notes for this ... https://github.com/mdsumner/tacky/issues/2
-  out$centroid_lon <- js$features$properties$`proj:centroid`[,2]
-  out$centroid_lat <- js$features$properties$`proj:centroid`[,1]
+  hrefs$centroid_lon <- js$features$properties$`proj:centroid`[,2]
+  hrefs$centroid_lat <- js$features$properties$`proj:centroid`[,1]
   
-  out$solarday <- as.Date(round(out$datetime - (out$centroid_lon/15 * 3600), "days"))
-  out$llxmin <- llex[1]
-  out$llxmax <- llex[2]
+  hrefs$solarday <- as.Date(round(hrefs$datetime - (hrefs$centroid_lon/15 * 3600), "days"))
+  hrefs$location <- table$location
+  hrefs$xmin <- table$xmin
+  hrefs$xmax <- table$xmax
+  hrefs$ymin <- table$ymin
+  hrefs$ymax <- table$ymax
+  hrefs$crs <- table$crs
   
-  out$llymin <- llex[3]
-  out$llymax <- llex[4]
-  out$xmin <- extent[1]
-  out$xmax <- extent[2]
-  out$ymin <- extent[3]
-  out$ymax <- extent[4]
-  
-  out$location <- location
-  out$crs <- crs
-  dplyr::arrange(out, location, datetime)
+  hrefs
 }
 
-
+modify_qtable_yearly <- function(x) {
+  year <- as.integer(format(Sys.time(), "%Y"))
+  starts <- seq(as.Date("2015-01-01"), as.Date(sprintf("%i-01-01", year)), by = "1 year")
+  ends <- seq(starts[2] -1, length.out = length(starts), by = "1 year")
+  dplyr::bind_rows(lapply(split(x, 1:nrow(x)), function(.x) dplyr::slice(.x, rep(1, length(starts))) |> dplyr::mutate(start = starts, end = ends)))
+}
+stretch_hist <- function(x, ...) {
+  ## stretch as if all the pixels were in the same band (not memory safe)
+  rv <- terra::stretch(terra::rast(matrix(terra::values(x))), histeq = TRUE, maxcell = terra::ncell(x)*3)
+  ## set the values to the input, then stretch to 0,255
+  terra::stretch(terra::setValues(x, c(terra::values(rv))), histeq = FALSE, maxcell = terra::ncell(x))
+}
 
 ## build the image
-build_cloud <- function(assets, res = 10, div = NULL) {
-  out <- try({
-  tmpdir <- tempdir()
-  if (!dir.exists(tmpdir)) {
-    if (!is_cloud(tmpdir)) {
-     dir.create(tmpdir, showWarnings = FALSE, recursive = TRUE)
-    }
-  }
-  tf <- tempfile(fileext = ".tif", tmpdir = tmpdir)
+build_cloud <- function(assets, res = 10, div = NULL, root = tmpdir()) {
+  if (!dir.exists(root)) {
+    if (!is_cloud(root)) {
+     dir.create(root, showWarnings = FALSE, recursive = TRUE)
+  }}
+  tf <- tempfile(fileext = ".tif", tmpdir = root)
   set_gdal_envs()
   exnames <- c("xmin", "xmax", "ymin", "ymax")
   ## every group of rows has a single extent
@@ -194,10 +224,8 @@ build_cloud <- function(assets, res = 10, div = NULL) {
     ex <- c(middle[1] - dxdy[1], middle[1] + dxdy[1], middle[2] - dxdy[2], middle[2] + dxdy[2])
   }
   cloud <- sprintf("/vsicurl/%s", assets$scl)
-  vapour::gdal_raster_dsn(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = tf)
-  })
-  if (inherits(out, "try-error")) return(NULL)
-  out
+  out <- try(vapour::gdal_raster_dsn(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = tf)[[1]], silent = TRUE)
+  if (inherits(out, "try-error")) NA_character_ else out
 }
 
 warp_to_dsn <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = NULL, target_dim = NULL, resample = "near") {
@@ -237,26 +265,40 @@ build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
   
   bands <- vector("list", 3)
   bandnames <- c("red", "green", "blue")
+  out <-   tibble::tibble(outfile = NA_character_, location = assets$location[1], 
+                          clear_test = assets$clear_test[1], 
+                          solarday = assets$solarday[1], assets = list(assets))
+  
   ## didn't like use of gdalraster::srs_to_wkt here ??
   for (i in seq_along(bandnames)) {
-    bands[[i]] <- warp_to_dsn(assets[[bandnames[i]]], target_crs = crs, target_res = res, target_ext = ex, resample = resample)[[1]]
+    dsns <- assets[[bandnames[i]]]
+    dsns <- dsns[!is.na(dsns)]
+    if (length(dsns) < 1) return(out)
+    tst <- try(warp_to_dsn(dsns, target_crs = crs, target_res = res, target_ext = ex, resample = resample)[[1]], silent = TRUE)
+    if (inherits(tst, "try-error")) return(out)
+    bands[[i]] <- tst
   }
-  vrt <- vapour::buildvrt(unlist(bands))
+  vrt <- try(vapour::buildvrt(unlist(bands)), silent = TRUE)
+  if (inherits(vrt, "try-error")) return(out)
+  
   location <- assets$location[1L]
    outfile <- sprintf("%s/%s_%s.tif", root, location, format(assets$solarday[1]))
    if (!is_cloud(root)) {
       if (!fs::dir_exists(root)) dir.create(root, showWarnings = FALSE, recursive = TRUE)
   }
-  gdalraster::translate(vrt, outfile, 
-          cl_arg = c( "-co", "COMPRESS=DEFLATE", "-co", "TILED=NO"))
+  test <- try( gdalraster::translate(vrt, outfile, 
+          cl_arg = c( "-co", "COMPRESS=DEFLATE", "-co", "TILED=NO")), silent = T)
+  if (inherits(test, "try-error")) return(out)
+  
 
-  tibble::tibble(outfile = outfile, location = assets$location[1], clear_test = assets$clear_test[1], solarday = assets$solarday[1], assets = list(assets))
-
+ out$outfile <- outfile
+ out
 }
 is_cloud <- function(x) {
   grepl("^/vsi", x)
 }
 build_image_png <- function(dsn) {
+  if (is.na(dsn)) return(NA_character_)
   outpng <- gsub("tif$", "png", dsn)
   if (!fs::dir_exists(dirname(outpng))) {
     if (!is_cloud(outpng))  {
@@ -325,15 +367,15 @@ mtrx <- function(x) {
   as.vector(x)# matrix(x, attr(x, "gis")$dim[2L], byrow = TRUE))
 }
 read_dsn <- function(x) {
-  if (is.null(x)) return(NULL)
+  if (is.null(x) || is.na(x)) return(NULL)
   ds <- new(gdalraster::GDALRaster, x[[1]])
   on.exit(ds$close(), add = TRUE)
   gdalraster::read_ds(ds)
 }
 filter_fun <- function(.x) {
-  if (is.null(.x)) return(FALSE)
+  if (is.null(.x)) return(NA_real_)
   .x <- unlist(.x, use.names = F)
-  if (all(is.na(.x))) return(FALSE)
+  if (all(is.na(.x))) return(NA_real_)
   ## 0, 1, 2, 3, 
   mean(.x %in%  c(1, 3, 8, 9, 10), na.rm = TRUE) 
 }
