@@ -7,7 +7,7 @@ pkgs <- c("tarchetypes", "crew", "reproj", "sds", "jsonlite", "vapour", "targets
 
 tar_source()
 
-bucket <- "geotar0"
+bucket <- "estinel"
 prefix <- "sentinel-2-c1-l2a"
 rootdir <- sprintf("/vsis3/%s/%s", bucket, prefix)
 #rootdir <- "/perm_storage/home/data/_targets_locationtifs/sentinel-2-c1-l2a"
@@ -21,7 +21,7 @@ Sys.setenv(AWS_ACCESS_KEY_ID = Sys.getenv("PAWSEY_AWS_ACCESS_KEY_ID"),
            AWS_VIRTUAL_HOSTING = "NO")
 
 
-ncpus <- 14
+ncpus <- 20
 log_directory <- "_targets/logs"
 # Set target options:
 laws <- list(repository = "aws",
@@ -41,11 +41,10 @@ tar_option_set(
   packages =pkgs
 )
 
-
 tar_assign(
   {
   tabl <-  rbind(
-    data.frame(location = "Hobart", lon = 147.3257, lat = 42.8826), 
+    data.frame(location = "Hobart", lon = 147.3257, lat = -42.8826), 
     data.frame(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600)), 
                                  data.frame(location = "Casey_Station", 
                                            lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
@@ -53,8 +52,9 @@ tar_assign(
                                  data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
                                  data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871)
                                 , cleanup_table() 
-  )[1, ] |> tar_target()
+  ) |> tar_target()
   
+  resolution <- 10 |> tar_target()
   radiusy <- 3000 |> tar_target()
   radiusx <- radiusy |> tar_target()
   ## we're ignoring this and getting every date see modify_qtable_yearly
@@ -62,15 +62,17 @@ tar_assign(
   lon <- tabl$lon |> tar_target()
   lat <- tabl$lat |> tar_target() 
   location <- tabl$location |> tar_target()
-  crs <- mk_crs(lon, lat) |> tar_target( pattern = map(lon, lat), iteration = "vector")
+  crslaea <- mk_crs(lon, lat) |> tar_target( pattern = map(lon, lat), iteration = "vector")
   ## note that mkextent and unproj are vectorized over matrix rows
-  extent <- mkextent(cbind(lon, lat), radiusy, radiusx, cosine = FALSE) |> tar_target()
-  ll_extent <- unproj(extent, source = crs) |> tar_target()
-  ## this table now has everything we've created so far
+  extentlaea <- mkextent(cbind(lon, lat), radiusy, radiusx, cosine = FALSE) |> tar_target(pattern = map(lon, lat))
+  crs <- mk_utm_crs(lon, lat) |> tar_target(pattern = map(lon, lat))
+ extent <- vaster::buffer_extent(reproj::reproj_extent(extentlaea, crs, source = crslaea), resolution) |> tar_target(pattern = map(extentlaea, crs, crslaea))
+   ll_extent <- unproj(extent, source = crs) |> tar_target()
+#   ## this table now has everything we've created so far
   qtable0 <-  dplyr::mutate(tabl, start = daterange[1], end = daterange[2], 
                            crs = crs,
-                           xmin = extent[,1L], xmax = extent[,2L], ymin = extent[,3L], ymax = extent[,4L], 
-                  lonmin = ll_extent[,1L], lonmax = ll_extent[,2L], latmin = ll_extent[,3L], latmax = ll_extent[,4L], 
+                           xmin = extent[,1L], xmax = extent[,2L], ymin = extent[,3L], ymax = extent[,4L],
+                  lonmin = ll_extent[,1L], lonmax = ll_extent[,2L], latmin = ll_extent[,3L], latmax = ll_extent[,4L],
                   xmin = extent[,1L], xmax = extent[,2L], ymin = extent[,3L], ymax = extent[,4L]) |> tar_target()
   qtable1 <- modify_qtable_yearly(qtable0) |> tar_target()
   query <- getstac_query(qtable1) |> tar_target( pattern = map(qtable1), iteration = "list")
@@ -79,17 +81,17 @@ tar_assign(
   qtable2 <- (qtable1[!bad, ]) |> tar_target()
   qtable <-  mutate(qtable2, js = stac_json0[!bad]) |> tar_target()
   stac_tables <- process_stac_table2(qtable) |> tar_target( pattern = map(qtable), iteration = "list")
-#   
+#
    images_table <- dplyr::bind_rows(stac_tables) |> dplyr::group_by(location, solarday) |> tar_group() |> tar_target( iteration = "group")
- cloud_tifs <- build_cloud(images_table, res = 10, div = 2, root = rootdir) |> tar_target( pattern = map(images_table))
-# 
-cloud_filter <- filter_fun(read_dsn(cloud_tifs)) |> tar_target(pattern = map(cloud_tifs), iteration = "vector")
+ scl_tifs <- build_scl_dsn(images_table, res = resolution, root = rootdir) |> tar_target( pattern = map(images_table))
+#
+scl_filter <- filter_fun(read_dsn(scl_tifs)) |> tar_target(pattern = map(scl_tifs), iteration = "vector")
 #  #
- filter_table  <- images_table |> mutate(scl_tif = cloud_tifs[tar_group], clear_test = cloud_filter[tar_group])  |>  tar_target()
+ filter_table  <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_filter[tar_group])  |>  tar_target()
  group_table <- filter_table |>
      group_by(location, solarday) |> tar_group() |>
      tar_target(iteration = "group")
-   dsn_table <- build_image_dsn(group_table, res = 10,
+   dsn_table <- build_image_dsn(group_table, res = resolution,
                                          root = rootdir)  |> tar_target(pattern = map(group_table))
    pngs <- build_image_png(dsn_table$outfile) |> tar_target(pattern = map(dsn_table))
     scenes <- mutate(dsn_table, outpng = pngs) |> tar_target()

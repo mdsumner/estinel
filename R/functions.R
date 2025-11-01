@@ -1,4 +1,21 @@
 
+pl <- function(x) {
+  if (missing(x)) x <- sample_n(viewtable, 1); 
+  op <- par(mfrow = c(1, 2));
+  plotRGB(rr <- rast(sprintf("/vsicurl/%s", x$outpng), raw = T)); 
+  plotRGB(rr <- stretch_hist(rast(sprintf("/vsicurl/%s", x$outfile), raw = T))); 
+  cl <- read.csv("inst/extdata/SCL_pal.csv")
+  cl$col <- gsub("\t", "", cl$col)
+  #r <- rast(gsub("/vsis3/", "/vsicurl/https://projects.pawsey.org.au/", x$scl_tif))
+  #coltab(r) <- transmute(cl, value = val, col = col)
+  
+  #levels(r) <- rename(cl, ID = val, category = class)
+  #plot(r, add = T)
+  print(x$clear_test)
+ # plot(density(values(rr)))
+  par(op)
+  x
+}
 
 cleanup_table <- function() {
   x <- readxl::read_excel("Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
@@ -16,21 +33,7 @@ filter_the_table <- function(x, cfilter) {
   dplyr::filter(x, tar_group %in% which(cfilter)) |>
     dplyr::group_by(location, solarday)
 }
-nicebbox <- function(dat, min = .05, max = 1) {
-  ex <- c(range(dat[,1, drop = TRUE]), range(dat[, 2, drop = TRUE]))
-  dif <- diff(ex)[c(1, 3)]
-  if (any(dif < min)) {
-    f <- min
-  }
-  if (any(dif > max)) {
-    f <- max
-  }
-  ## take the middle and give it the result
-  cs <- 1/cos(mean(ex[3:4]) * pi/180)
-  out <- rep(c(mean(ex[1:2]), mean(ex[3:4])), each = 2L) + c(-cs,cs, -1, 1) * f
-  out
-  
-}
+
 
 #' Plot raster at native resolution
 #'
@@ -129,6 +132,17 @@ mk_ll_extent <- function(ex, crs) {
   llex <- reproj::reproj_extent(ex, "EPSG:4326", source = crs)
   llex
 }
+mk_utm_crs <-function(lon, lat) {
+  zone <- floor((lon + 180) / 6) + 1
+  south <- lat < 0
+  if (south) {
+    lab <- " +south"
+  } else {
+    lab <- ""
+  }
+  gdalraster::srs_find_epsg(sprintf("+proj=utm +zone=%i%s +datum=WGS84", zone, lab))
+}
+
 getstac_query <- function(x, limit = 300) {
   llnames <- c("lonmin", "lonmax", "latmin", "latmax")
   dtnames <- c("start", "end")
@@ -194,7 +208,7 @@ process_stac_table2 <- function(table) {
 
 modify_qtable_yearly <- function(x) {
   year <- as.integer(format(Sys.time(), "%Y"))
-  starts <- seq(as.Date("2015-01-01"), as.Date(sprintf("%i-01-01", year)), by = "1 year")
+  starts <- seq(as.Date("2024-01-01"), as.Date(sprintf("%i-01-01", year)), by = "1 year")
   ends <- seq(starts[2] -1, length.out = length(starts), by = "1 year")
   dplyr::bind_rows(lapply(split(x, 1:nrow(x)), function(.x) dplyr::slice(.x, rep(1, length(starts))) |> dplyr::mutate(start = starts, end = ends)))
 }
@@ -206,25 +220,26 @@ stretch_hist <- function(x, ...) {
 }
 
 ## build the image
-build_cloud <- function(assets, res = 10, div = NULL, root = tmpdir()) {
+build_scl_dsn <- function(assets, res = 10, div = NULL, root = tmpdir()) {
   if (!dir.exists(root)) {
     if (!is_cloud(root)) {
      dir.create(root, showWarnings = FALSE, recursive = TRUE)
-  }}
-  tf <- tempfile(fileext = ".tif", tmpdir = root)
+    }}
+  root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
+  location <- assets$location[1L]
+  outfile <- sprintf("%s/%s_%s_scl.tif", root, location, format(assets$solarday[1]))
   set_gdal_envs()
   exnames <- c("xmin", "xmax", "ymin", "ymax")
   ## every group of rows has a single extent
   ex <- unlist(assets[1L, exnames], use.names = FALSE)
-  if (!is.null(div))  {
-    ## this only works for our crafted extents
-    #ex <- ex/div
-    dxdy <- diff(ex)[c(1, 3)]/div / 2
-    middle <- c(mean(ex[1:2]), mean(ex[3:4]))
-    ex <- c(middle[1] - dxdy[1], middle[1] + dxdy[1], middle[2] - dxdy[2], middle[2] + dxdy[2])
-  }
+  # if (!is.null(div))  {
+  #   dxdy <- diff(ex)[c(1, 3)]/div / 2
+  #   middle <- c(mean(ex[1:2]), mean(ex[3:4]))
+  #   ex <- c(middle[1] - dxdy[1], middle[1] + dxdy[1], middle[2] - dxdy[2], middle[2] + dxdy[2])
+  # }
+
   cloud <- sprintf("/vsicurl/%s", assets$scl)
-  out <- try(vapour::gdal_raster_dsn(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = tf)[[1]], silent = TRUE)
+  out <- try(vapour::gdal_raster_dsn(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = outfile)[[1]], silent = TRUE)
   if (inherits(out, "try-error")) NA_character_ else out
 }
 
@@ -254,8 +269,25 @@ warp_to_dsn <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = 
   #x <- gdalraster::read_ds(new(gdalraster::GDALRaster, tf))
   tf
 }
+put_bytes_at <- function(input, output) {
+  tempv <- tempfile(fileext = ".tif", tmpdir = "/vsimem")
+  test <- try( gdalraster::translate(input, tempv, 
+                                     cl_arg = c( "-co", "COMPRESS=DEFLATE", "-co", "TILED=NO")), silent = T)
+  
+  con <- new(gdalraster::VSIFile, tempv, "r")
+  bytes <- con$ingest(-1)
+  con$close()
+  gdalraster::vsi_unlink(tempv)
+  con1 <- new(gdalraster::VSIFile, output, "w")
+  con1$write(bytes)
+  con1$close()
+  rm(bytes); gc()
+  invisible(NULL)
+}
 build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
   root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
+  
+  
   set_gdal_envs()
   crs <- assets$crs[1]
   
@@ -267,7 +299,8 @@ build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
   bandnames <- c("red", "green", "blue")
   out <-   tibble::tibble(outfile = NA_character_, location = assets$location[1], 
                           clear_test = assets$clear_test[1], 
-                          solarday = assets$solarday[1], assets = list(assets))
+                          solarday = assets$solarday[1],
+                          scl_tif = assets$scl_tif[1], assets = list(assets))
   
   ## didn't like use of gdalraster::srs_to_wkt here ??
   for (i in seq_along(bandnames)) {
@@ -283,20 +316,26 @@ build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
   
   location <- assets$location[1L]
    outfile <- sprintf("%s/%s_%s.tif", root, location, format(assets$solarday[1]))
+   print(outfile)
    if (!is_cloud(root)) {
       if (!fs::dir_exists(root)) dir.create(root, showWarnings = FALSE, recursive = TRUE)
-  }
-  test <- try( gdalraster::translate(vrt, outfile, 
-          cl_arg = c( "-co", "COMPRESS=DEFLATE", "-co", "TILED=NO")), silent = T)
-  if (inherits(test, "try-error")) return(out)
-  
+   }
+   
 
- out$outfile <- outfile
- out
+  test <- put_bytes_at(vrt, outfile)
+  if (inherits(test, "try-error")) return(out)
+  out$outfile <- outfile
+  out
 }
 is_cloud <- function(x) {
   grepl("^/vsi", x)
 }
+# midex <- function(x) {
+#   c(mean(x[1:2]), mean(x[3:4]))
+# }
+# widex <- function(x) {
+#   diff(x)[c(1, 3)]
+# }
 build_image_png <- function(dsn) {
   if (is.na(dsn)) return(NA_character_)
   outpng <- gsub("tif$", "png", dsn)
@@ -306,9 +345,9 @@ build_image_png <- function(dsn) {
     }
   }
   writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
-  #r <- terra::rast(dsn, raw = TRUE)
-  #terra::writeRaster(terra::stretch(r), outpng, overwrite = TRUE, gdal=c("WORLDFILE=YES"), datatype = "1INT1U")
-  gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
+  r <- terra::rast(dsn, raw = TRUE)
+  terra::writeRaster(stretch_hist(r), outpng, overwrite = TRUE, datatype = "1INT1U")
+  #gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
   outpng
 }
 
@@ -394,3 +433,20 @@ qm <- function(x, target_dim = c(1024, 0), target_crs = NULL, target_ext = NULL,
   ximage::ximage(out, ...)
   invisible(out)
 }
+
+
+# nicebbox <- function(dat, min = .05, max = 1) {
+#   ex <- c(range(dat[,1, drop = TRUE]), range(dat[, 2, drop = TRUE]))
+#   dif <- diff(ex)[c(1, 3)]
+#   if (any(dif < min)) {
+#     f <- min
+#   }
+#   if (any(dif > max)) {
+#     f <- max
+#   }
+#   ## take the middle and give it the result
+#   cs <- 1/cos(mean(ex[3:4]) * pi/180)
+#   out <- rep(c(mean(ex[1:2]), mean(ex[3:4])), each = 2L) + c(-cs,cs, -1, 1) * f
+#   out
+#   
+# }
