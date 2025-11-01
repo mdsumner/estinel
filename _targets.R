@@ -21,7 +21,7 @@ Sys.setenv(AWS_ACCESS_KEY_ID = Sys.getenv("PAWSEY_AWS_ACCESS_KEY_ID"),
            AWS_VIRTUAL_HOSTING = "NO")
 
 
-ncpus <- 20
+ncpus <- 15
 log_directory <- "_targets/logs"
 # Set target options:
 laws <- list(repository = "aws",

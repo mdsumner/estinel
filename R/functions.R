@@ -344,9 +344,9 @@ build_image_png <- function(dsn) {
       fs::dir_create(dirname(outpng))
     }
   }
-  writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
+  #writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
   r <- terra::rast(dsn, raw = TRUE)
-  terra::writeRaster(stretch_hist(r), outpng, overwrite = TRUE, datatype = "1INT1U")
+  terra::writeRaster(stretch_hist(r), outpng, overwrite = TRUE, datatype = "INT1U")
   #gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
   outpng
 }
