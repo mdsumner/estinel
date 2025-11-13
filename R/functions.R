@@ -96,12 +96,12 @@ stac_date <- function(x = 365.25) {
   duration(x * 24 * 3600)
 }
 unproj <- function(x, source) {
-  out <- x * NA_real_
-  source <- rep(source, length.out = nrow(x))
-  for (i in seq_len(nrow(x))) {
-    out[i, ] <- reproj::reproj_extent(x[i, ], "EPSG:4326", source = source[i])
-  }
-  out
+  #out <- x * NA_real_
+  #source <- rep(source, length.out = nrow(x))
+  #for (i in seq_len(nrow(x))) {
+  #  out[i, ] <- reproj::reproj_extent(x[i, ], "EPSG:4326", source = source[i])
+  #}
+  reproj::reproj_extent(x, "EPSG:4326", source = source)
 }
 localproj <- function(x) {
   sprintf("+proj=laea +lon_0=%f +lat_0=%f", x[1], x[2])
@@ -117,7 +117,7 @@ mkextent <- function(lon, lat, bufy = 3000, bufx = NULL, cosine = FALSE) {
   } else {
     bufx <- bufy
   }
-  cbind(-bufx, bufx, -bufy, bufy)
+  c(-bufx, bufx, -bufy, bufy)
 }
 mkextent_crs <- function(lon, lat, bufy = 3000, bufx = 3000, crs) {
   ex <- mkextent(lon, lat, bufy, bufx)
@@ -143,17 +143,22 @@ mk_utm_crs <-function(lon, lat) {
   gdalraster::srs_find_epsg(sprintf("+proj=utm +zone=%i%s +datum=WGS84", zone, lab))
 }
 
-getstac_query <- function(x, limit = 300) {
+getstac_query <- function(x, limit = 300, 
+                          provider = "https://planetarycomputer.microsoft.com/api/stac/v1/search", 
+                          collections = "sentinel-2-l2a") {
   llnames <- c("lonmin", "lonmax", "latmin", "latmax")
   dtnames <- c("start", "end")
   llex <- unlist(x[llnames])
   date <- c(x[[dtnames[1]]], x[[dtnames[2]]])
-  sds::stacit(llex, date, limit = limit)
+ 
+  href <- sds::stacit(llex, date, limit = limit, collections = collections, provider = provider)
+  href
 }
 ## get the available dates
-getstac_json <- function(qu) {
-  js <- try(jsonlite::fromJSON(qu))
-  if (inherits(js, "try-error") || js$numberReturned < 1) return(data.frame())
+getstac_json <- function(query) {
+  
+  js <- try(jsonlite::fromJSON(query))
+  if (inherits(js, "try-error") || (length(js$features) < 1) || (!is.null(js$numberReturned) &&js$numberReturned < 1)) return(list())
  js 
 }
  
@@ -192,8 +197,10 @@ process_stac_table2 <- function(table) {
   hrefs <- tibble::as_tibble(lapply(js$features$assets, \(.x) .x$href))
   hrefs$datetime <- as.POSIXct(strptime(js$features$properties$datetime, "%Y-%m-%dT%H:%M:%OSZ"), tz = "UTC")
   ## had to google my own notes for this ... https://github.com/mdsumner/tacky/issues/2
-  hrefs$centroid_lon <- js$features$properties$`proj:centroid`[,2]
-  hrefs$centroid_lat <- js$features$properties$`proj:centroid`[,1]
+  bbox <- do.call(rbind, js$features$bbox)
+  centroid <- c(mean(bbox[, c(1, 3)]), mean(bbox[, c(2, 4)]))
+  hrefs$centroid_lon <- js$features$properties$`proj:centroid`[,2] %||%  centroid[1]
+  hrefs$centroid_lat <- js$features$properties$`proj:centroid`[,1] %||% centroid[2]
   
   hrefs$solarday <- as.Date(round(hrefs$datetime - (hrefs$centroid_lon/15 * 3600), "days"))
   hrefs$location <- table$location
@@ -208,7 +215,7 @@ process_stac_table2 <- function(table) {
 
 modify_qtable_yearly <- function(x) {
   year <- as.integer(format(Sys.time(), "%Y"))
-  starts <- seq(as.Date("2024-01-01"), as.Date(sprintf("%i-01-01", year)), by = "1 year")
+  starts <- seq(as.Date("2015-01-01"), as.Date(sprintf("%i-01-01", year)), by = "1 year")
   ends <- seq(starts[2] -1, length.out = length(starts), by = "1 year")
   dplyr::bind_rows(lapply(split(x, 1:nrow(x)), function(.x) dplyr::slice(.x, rep(1, length(starts))) |> dplyr::mutate(start = starts, end = ends)))
 }
@@ -218,14 +225,24 @@ stretch_hist <- function(x, ...) {
   ## set the values to the input, then stretch to 0,255
   terra::stretch(terra::setValues(x, c(terra::values(rv))), histeq = FALSE, maxcell = terra::ncell(x))
 }
-
+vsicurl_for <- function(x, pc = FALSE) {
+  if (pc) {
+                             #pc_url_signing=yes
+    out <- sprintf("/vsicurl?pc_url_signing=yes&url=%s",x)
+} else {
+  out <- sprintf("/vsicurl/%s", x)
+}
+  out
+}
 ## build the image
-build_scl_dsn <- function(assets, res = 10, div = NULL, root = tmpdir()) {
+build_scl_dsn <- function(assets, res = 10, div = NULL, root = tempdir()) {
+
+  root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
   if (!dir.exists(root)) {
     if (!is_cloud(root)) {
-     dir.create(root, showWarnings = FALSE, recursive = TRUE)
+      dir.create(root, showWarnings = FALSE, recursive = TRUE)
     }}
-  root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
+  
   location <- assets$location[1L]
   outfile <- sprintf("%s/%s_%s_scl.tif", root, location, format(assets$solarday[1]))
   set_gdal_envs()
@@ -237,15 +254,17 @@ build_scl_dsn <- function(assets, res = 10, div = NULL, root = tmpdir()) {
   #   middle <- c(mean(ex[1:2]), mean(ex[3:4]))
   #   ex <- c(middle[1] - dxdy[1], middle[1] + dxdy[1], middle[2] - dxdy[2], middle[2] + dxdy[2])
   # }
+  scl <- assets[["scl"]] %||% assets[["SCL"]]
+  cloud <- scl
+  for (i in seq_along(cloud)) cloud[i] <- vsicurl_for(scl[i], pc = grepl("windows.net", scl[i]))
 
-  cloud <- sprintf("/vsicurl/%s", assets$scl)
   out <- try(vapour::gdal_raster_dsn(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = outfile)[[1]], silent = TRUE)
   if (inherits(out, "try-error")) NA_character_ else out
 }
 
 warp_to_dsn <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = NULL, target_dim = NULL, resample = "near") {
   set_gdal_envs()
-  dsn <- sprintf("/vsicurl/%s", dsn)
+  #dsn <- sprintf("/vsicurl/%s", dsn)
   args <- character()
   t_srs <- ""
   if (!is.null(target_crs)) {
@@ -265,7 +284,8 @@ warp_to_dsn <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = 
     args <- c(args, "-ts", target_dim)
   }
   #t_srs <- gdalraster::srs_to_wkt(t_srs)
-  chk <- gdalraster::warp(dsn, tf <- tempfile(fileext = ".tif"), t_srs = t_srs, cl_arg = args, quiet = TRUE)
+  chk <- try(gdalraster::warp(dsn, tf <- tempfile(fileext = ".tif"), t_srs = t_srs, cl_arg = args, quiet = TRUE), silent = TRUE)
+  if (inherits(chk, "try-error")) return(NA_character_)
   #x <- gdalraster::read_ds(new(gdalraster::GDALRaster, tf))
   tf
 }
@@ -286,7 +306,10 @@ put_bytes_at <- function(input, output) {
 }
 build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
   root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
-  
+  if (!dir.exists(root)) {
+    if (!is_cloud(root)) {
+      dir.create(root, showWarnings = FALSE, recursive = TRUE)
+    }}
   
   set_gdal_envs()
   crs <- assets$crs[1]
@@ -297,6 +320,10 @@ build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
   
   bands <- vector("list", 3)
   bandnames <- c("red", "green", "blue")
+  if (grepl("windows.net", assets[[1]])) {
+    bandnames <- c("B04", "B03", "B02")
+    
+  }
   out <-   tibble::tibble(outfile = NA_character_, location = assets$location[1], 
                           clear_test = assets$clear_test[1], 
                           solarday = assets$solarday[1],
@@ -307,6 +334,8 @@ build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
     dsns <- assets[[bandnames[i]]]
     dsns <- dsns[!is.na(dsns)]
     if (length(dsns) < 1) return(out)
+    
+    for (i in seq_along(dsns)) dsns[i] <- vsicurl_for(dsns[i], pc = grepl("windows.net", dsns[i]))
     tst <- try(warp_to_dsn(dsns, target_crs = crs, target_res = res, target_ext = ex, resample = resample)[[1]], silent = TRUE)
     if (inherits(tst, "try-error")) return(out)
     bands[[i]] <- tst
@@ -344,10 +373,12 @@ build_image_png <- function(dsn) {
       fs::dir_create(dirname(outpng))
     }
   }
-  #writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
-  r <- terra::rast(dsn, raw = TRUE)
-  terra::writeRaster(stretch_hist(r), outpng, overwrite = TRUE, datatype = "INT1U")
+ # writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
+  test1 <- try(r <- terra::rast(dsn, raw = TRUE), silent = TRUE)
+  if (inherits(test1, "try-error")) return(NA_character_)
+  test <- try(terra::writeRaster(stretch_hist(r), outpng, overwrite = TRUE, datatype = "INT1U"), silent = TRUE)
   #gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
+  if (inherits(test, "try-error")) return(NA_character_)
   outpng
 }
 
