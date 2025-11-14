@@ -142,16 +142,29 @@ mk_utm_crs <-function(lon, lat) {
   }
   gdalraster::srs_find_epsg(sprintf("+proj=utm +zone=%i%s +datum=WGS84", zone, lab))
 }
+make_group_table_providers <- function(x, provider, collection)   {
+  stopifnot(length(provider) == length(collection))
+  out <- vector("list", length(provider))
+  for (i in seq_along(provider)) {
+    xi <- x
+    xi[["provider"]] <- provider[i]
+    xi[["collection"]] <- collection[i]
+    out[[i]] <- xi
+  }
+  do.call(rbind, out)
+}
 
-getstac_query <- function(x, limit = 300, 
-                          provider = "https://planetarycomputer.microsoft.com/api/stac/v1/search", 
-                          collections = "sentinel-2-l2a") {
+getstac_query <- function(x, limit = 300) {
+  #stopifnot(length(provider) == length(collections))
   llnames <- c("lonmin", "lonmax", "latmin", "latmax")
   dtnames <- c("start", "end")
   llex <- unlist(x[llnames])
   date <- c(x[[dtnames[1]]], x[[dtnames[2]]])
  
-  href <- sds::stacit(llex, date, limit = limit, collections = collections, provider = provider)
+  #href <- character(length(provider))
+  #for (i in seq_along(href)) {
+  href <- sds::stacit(llex, date, limit = limit, collections = x$collection[1L], provider = x$provider[1L])
+  #}
   href
 }
 ## get the available dates
@@ -209,15 +222,28 @@ process_stac_table2 <- function(table) {
   hrefs$ymin <- table$ymin
   hrefs$ymax <- table$ymax
   hrefs$crs <- table$crs
-  
+  hrefs$collection <- table$collection
+  hrefs$provider <- table$provider
   hrefs
 }
 
-modify_qtable_yearly <- function(x) {
-  year <- as.integer(format(Sys.time(), "%Y"))
-  starts <- seq(as.Date("2015-01-01"), as.Date(sprintf("%i-01-01", year)), by = "1 year")
+modify_qtable_yearly <- function(x, startdate, enddate = Sys.time(), provider, collection) {
+  stopifnot(length(provider) == length(collection))
+
+  year <- as.integer(format(as.Date(enddate), "%Y"))
+  starts <- seq(as.Date(startdate), as.Date(sprintf("%i-01-01", year)), by = "1 year")
   ends <- seq(starts[2] -1, length.out = length(starts), by = "1 year")
-  dplyr::bind_rows(lapply(split(x, 1:nrow(x)), function(.x) dplyr::slice(.x, rep(1, length(starts))) |> dplyr::mutate(start = starts, end = ends)))
+  xx <- dplyr::bind_rows(lapply(split(x, 1:nrow(x)), function(.x) dplyr::slice(.x, rep(1, length(starts))) |> dplyr::mutate(start = starts, end = ends)))
+  
+  out <- vector("list", length(provider))
+  for (i in seq_along(provider)) {
+    xi <- xx
+    xi[["provider"]] <- provider[i]
+    xi[["collection"]] <- collection[i]
+    out[[i]] <- xi
+  }
+  do.call(rbind, out)
+
 }
 stretch_hist <- function(x, ...) {
   ## stretch as if all the pixels were in the same band (not memory safe)
@@ -237,7 +263,7 @@ vsicurl_for <- function(x, pc = FALSE) {
 ## build the image
 build_scl_dsn <- function(assets, res = 10, div = NULL, root = tempdir()) {
 
-  root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
+  root <- sprintf("%s/%s/%s", root, assets$collection[1L], format(assets$solarday[1L], "%Y/%m/%d"))
   if (!dir.exists(root)) {
     if (!is_cloud(root)) {
       dir.create(root, showWarnings = FALSE, recursive = TRUE)
@@ -254,11 +280,12 @@ build_scl_dsn <- function(assets, res = 10, div = NULL, root = tempdir()) {
   #   middle <- c(mean(ex[1:2]), mean(ex[3:4]))
   #   ex <- c(middle[1] - dxdy[1], middle[1] + dxdy[1], middle[2] - dxdy[2], middle[2] + dxdy[2])
   # }
-  scl <- assets[["scl"]] %||% assets[["SCL"]]
-  cloud <- scl
-  for (i in seq_along(cloud)) cloud[i] <- vsicurl_for(scl[i], pc = grepl("windows.net", scl[i]))
+  scl <- assets[["scl"]] 
+  if (is.na(scl)[1]) scl <- assets[["SCL"]]
+ 
+  for (i in seq_along(scl)) scl[i] <- vsicurl_for(scl[i], pc = grepl("windows.net", scl[i]))
 
-  out <- try(vapour::gdal_raster_dsn(cloud, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = outfile)[[1]], silent = TRUE)
+  out <- try(vapour::gdal_raster_dsn(scl, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = outfile)[[1]], silent = TRUE)
   if (inherits(out, "try-error")) NA_character_ else out
 }
 
@@ -304,7 +331,8 @@ put_bytes_at <- function(input, output) {
   rm(bytes); gc()
   invisible(NULL)
 }
-build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
+build_image_dsn <- function(assets, res, resample = "near", rootdir = tempdir()) {
+  root <- sprintf("%s/%s", rootdir, assets$collection[1])
   root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
   if (!dir.exists(root)) {
     if (!is_cloud(root)) {
@@ -320,7 +348,7 @@ build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
   
   bands <- vector("list", 3)
   bandnames <- c("red", "green", "blue")
-  if (grepl("windows.net", assets[[1]])) {
+  if (grepl("windows.net", assets[[1]][1L])) {
     bandnames <- c("B04", "B03", "B02")
     
   }
@@ -328,18 +356,21 @@ build_image_dsn <- function(assets, res, resample = "near", root = tempdir()) {
                           clear_test = assets$clear_test[1], 
                           solarday = assets$solarday[1],
                           scl_tif = assets$scl_tif[1], assets = list(assets))
-  
+  print(out$solarday)
+  print(out$location)
   ## didn't like use of gdalraster::srs_to_wkt here ??
   for (i in seq_along(bandnames)) {
+
     dsns <- assets[[bandnames[i]]]
     dsns <- dsns[!is.na(dsns)]
     if (length(dsns) < 1) return(out)
     
-    for (i in seq_along(dsns)) dsns[i] <- vsicurl_for(dsns[i], pc = grepl("windows.net", dsns[i]))
+    for (ii in seq_along(dsns)) dsns[ii] <- vsicurl_for(dsns[ii], pc = grepl("windows.net", dsns[ii]))
     tst <- try(warp_to_dsn(dsns, target_crs = crs, target_res = res, target_ext = ex, resample = resample)[[1]], silent = TRUE)
     if (inherits(tst, "try-error")) return(out)
     bands[[i]] <- tst
   }
+
   vrt <- try(vapour::buildvrt(unlist(bands)), silent = TRUE)
   if (inherits(vrt, "try-error")) return(out)
   

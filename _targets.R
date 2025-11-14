@@ -24,7 +24,7 @@ Sys.setenv(
 )
  
 
-ncpus <- 24
+ncpus <- 28
 #log_directory <- "_targets/logs"
 # Set target options:
 # laws <- list(repository = "aws",
@@ -38,7 +38,7 @@ ncpus <- 24
 
 tar_option_set(
   controller = if (ncpus <= 1) NULL else crew_controller_local(workers = ncpus
-#      ,options_local = crew_options_local(log_directory  = log_directory)
+      ,options_local = crew_options_local(log_directory  = "log_directory")
       ),
   format = "qs",
   packages =pkgs
@@ -46,8 +46,8 @@ tar_option_set(
 
 tar_assign(
   {
-    provider <- "https://planetarycomputer.microsoft.com/api/stac/v1/search" |> tar_target()
-    collection <- c("sentinel-2-l2a") |> tar_target()
+    provider <- c("https://planetarycomputer.microsoft.com/api/stac/v1/search", "https://earth-search.aws.element84.com/v1/search") |> tar_target()
+    collection <- c("sentinel-2-l2a", "sentinel-2-c1-l2a") |> tar_target()
   tabl <-  rbind(
     data.frame(location = "Hobart", lon = 147.3257, lat = -42.8826), 
     data.frame(location = "Dawson_Lampton_Ice_Tongue", lon  = -26.760, lat = -76.071),
@@ -63,8 +63,8 @@ tar_assign(
   resolution <- 10 |> tar_target()
   radiusy <- 3000 |> tar_target()
   radiusx <- radiusy |> tar_target()
-  ## we're ignoring this and getting every date see modify_qtable_yearly
-  daterange <- format(as.POSIXct(c(as.POSIXct("2025-06-23 00:00:00", tz = "UTC"), Sys.time()))) |> tar_target()
+  
+  daterange <- format(as.POSIXct(c(as.POSIXct("2015-06-23 00:00:00", tz = "UTC"), Sys.time()))) |> tar_target()
   lon <- tabl$lon |> tar_target()
   lat <- tabl$lat |> tar_target() 
   location <- tabl$location |> tar_target()
@@ -82,26 +82,27 @@ tar_assign(
                    lonmin = ll_extent[1L], lonmax = ll_extent[2L], latmin = ll_extent[3L], latmax = ll_extent[4L],
                    xmin = extent[1L], xmax = extent[2L], ymin = extent[3L], ymax = extent[4L]) |> 
      tar_target(pattern = map(ll_extent, extent, crs, tabl))
-  qtable1 <- modify_qtable_yearly(qtable0) |> tar_target()
-  query <- getstac_query(qtable1, provider = provider, collections = collection) |> tar_target( pattern = map(qtable1))
-   stac_json0 <- getstac_json(query) |> tar_target(pattern = map(query), iteration = "list")
-    bad <- (lengths(stac_json0) < 1) |> tar_target()
-    qtable2 <- (qtable1[!bad, ]) |> tar_target()
-    qtable <-  mutate(qtable2, js = stac_json0[!bad]) |> tar_target()
-   stac_tables <- process_stac_table2(qtable) |> tar_target( pattern = map(qtable), iteration = "list")
-# #
-   images_table <- dplyr::bind_rows(stac_tables) |> dplyr::group_by(location, solarday) |> tar_group() |> tar_target( iteration = "group")
-   scl_tifs <- build_scl_dsn(images_table, res = resolution, root = sprintf("%s/%s", rootdir, collection)) |> tar_target( pattern = map(images_table))
-# #
- scl_filter <- filter_fun(read_dsn(scl_tifs)) |> tar_target(pattern = map(scl_tifs), iteration = "vector")
-# #  #
-  filter_table  <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_filter[tar_group])  |>  tar_target()
-  group_table <- filter_table |>
-      group_by(location, solarday) |> tar_group() |>
-      tar_target(iteration = "group")
-    dsn_table <- build_image_dsn(group_table, res = resolution, root = sprintf("%s/%s", rootdir, collection))  |> tar_target(pattern = map(group_table))
-   pngs <- build_image_png(dsn_table$outfile) |> tar_target(pattern = map(dsn_table))
-    scenes <- mutate(dsn_table, outpng = pngs) |> tar_target()
+  qtable1 <- modify_qtable_yearly(qtable0, daterange[1L], daterange[2L], provider, collection) |> tar_target()
+  query_list <- getstac_query(qtable1) |> tar_target( pattern = map(qtable1), iteration = "list")
+   query <- unname(unlist(query_list)) |> tar_target()
+    stac_json0 <- getstac_json(query) |> tar_target(pattern = map(query), iteration = "list")
+     bad <- (lengths(stac_json0) < 1) |> tar_target()
+     qtable2 <- (qtable1[!bad, ]) |> tar_target()
+     qtable <-  mutate(qtable2, js = stac_json0[!bad]) |> tar_target()
+    stac_tables <- process_stac_table2(qtable) |> tar_target( pattern = map(qtable), iteration = "list")
+# # #
+   images_table <- dplyr::bind_rows(stac_tables) |> dplyr::group_by(location, solarday, provider) |> tar_group() |> tar_target( iteration = "group")
+    scl_tifs <- build_scl_dsn(images_table, res = resolution, root = rootdir) |> tar_target( pattern = map(images_table))
+# # #
+  scl_filter <- filter_fun(read_dsn(scl_tifs)) |> tar_target(pattern = map(scl_tifs), iteration = "vector")
+# # #  #
+   filter_table  <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_filter[tar_group])  |>  tar_target()
+   group_table <- filter_table |> make_group_table_providers(provider, collection) |> 
+       group_by(location, solarday, collection) |> tar_group() |>
+       tar_target(iteration = "group")
+     dsn_table <- build_image_dsn(group_table, res = resolution, rootdir = rootdir)  |> tar_target(pattern = map(group_table))
+#    pngs <- build_image_png(dsn_table$outfile) |> tar_target(pattern = map(dsn_table))
+#     scenes <- mutate(dsn_table, outpng = pngs) |> tar_target()
 #     viewtable <- mutate(scenes, outfile = gsub("/vsis3", endpoint, outfile), outpng = gsub("/vsis3", endpoint, outpng)) |> tar_target()
 }
   )
