@@ -61,7 +61,7 @@ tar_assign(
     resolution <- tabl$resolution |> tar_target()
     extent <- vaster::buffer_extent(reproj::reproj_extent(extentlaea, crs, source = crslaea), resolution) |> 
      tar_target(pattern = map(extentlaea, crs, crslaea, resolution), iteration = "list")
-    ll_extent <- unproj(extent, source = crs) |> tar_target(pattern = map(extent, crs))
+    ll_extent <- unproj(extent, source = crs) |> tar_target(pattern = map(extent, crs), iteration = "list")
     ## this table now has everything we've created so far
     qtable0 <-  dplyr::mutate(tabl, start = daterange[1], end = daterange[2],crs = crs,
                    lonmin = ll_extent[1L], lonmax = ll_extent[2L], latmin = ll_extent[3L], latmax = ll_extent[4L],
@@ -74,9 +74,13 @@ tar_assign(
      bad <- (lengths(stac_json0) < 1) |> tar_target()
      qtable2 <- (qtable1[!bad, ]) |> tar_target()
      qtable <-  mutate(qtable2, js = stac_json0[!bad]) |> tar_target()
-    stac_tables <- process_stac_table2(qtable) |> tar_target( pattern = map(qtable), iteration = "list")
-    images_table <- dplyr::bind_rows(stac_tables) |> dplyr::group_by(location, solarday, provider) |> tar_group() |> tar_target( iteration = "group")
-    scl_tifs <- build_scl_dsn(images_table, res = resolution, root = rootdir) |> tar_target( pattern = map(images_table))
+    stac_tables <- process_stac_table2(qtable) |> 
+      tar_target( pattern = map(qtable), iteration = "list")
+    images_table <- dplyr::bind_rows(stac_tables) |> 
+      dplyr::group_by(location, solarday, provider) |> 
+      tar_group() |> tar_target( iteration = "group")
+    scl_tifs <- build_scl_dsn(images_table, res = resolution, root = rootdir) |> 
+      tar_target( pattern = map(images_table))
     scl_filter <- filter_fun(read_dsn(scl_tifs)) |> tar_target(pattern = map(scl_tifs), iteration = "vector")
     filter_table  <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_filter[tar_group])  |>  tar_target()
     group_table <- filter_table |> make_group_table_providers(provider, collection) |>
@@ -84,8 +88,11 @@ tar_assign(
         tar_target(iteration = "group")
     dsn_table <- build_image_dsn(group_table, res = resolution, rootdir = rootdir)  |> tar_target(pattern = map(group_table))
     pngs <- build_image_png(dsn_table$outfile) |> tar_target(pattern = map(dsn_table))
-    scenes <- mutate(dsn_table, outpng = pngs) |> tar_target()
-    viewtable <- mutate(scenes, outfile = gsub("/vsis3", endpoint, outfile), outpng = gsub("/vsis3", endpoint, outpng)) |> tar_target()
+    viewtable <- mutate(dsn_table, outpng = pngs) |>
+      mutate(outfile = gsub("/vsis3", endpoint, outfile), 
+             outpng = gsub("/vsis3", endpoint, outpng), 
+             scl_tif = gsub("/vsis3", endpoint, scl_tif)) |> 
+      tar_target()
 }
   )
 

@@ -1,5 +1,5 @@
 
-pl <- function(x) {
+plold <- function(x) {
   if (missing(x)) x <- sample_n(viewtable, 1); 
   op <- par(mfrow = c(1, 2));
   plotRGB(rr <- rast(sprintf("/vsicurl/%s", x$outpng), raw = T)); 
@@ -255,9 +255,17 @@ modify_qtable_yearly <- function(x, startdate, enddate = Sys.time(), provider, c
 }
 stretch_hist <- function(x, ...) {
   ## stretch as if all the pixels were in the same band (not memory safe)
-  rv <- terra::stretch(terra::rast(matrix(terra::values(x))), histeq = TRUE, maxcell = terra::ncell(x)*3)
+  rv <- terra::stretch(terra::rast(matrix(terra::values(x))), histeq = TRUE, maxcell = terra::ncell(x))
   ## set the values to the input, then stretch to 0,255
   terra::stretch(terra::setValues(x, c(terra::values(rv))), histeq = FALSE, maxcell = terra::ncell(x))
+}
+pl <- function(...) {x <- sample_n(tar_read(viewtable) |> dplyr::filter(clear_test < .6, location == "West_Ice_Shelf"), 1); 
+plotRGB(stretch_q(rast(x$outfile), ...), smooth = FALSE); x}
+
+  
+stretch_q <- function(xx, n = 128L) {
+  q <- quantile(terra::values(xx), seq(0, 1, length.out = n), type = 1, names = FALSE, na.rm = TRUE)
+  terra::stretch(terra::setValues(xx, q[cut(terra::values(xx), unique(q), labels = F, include.lowest = T)]))
 }
 vsicurl_for <- function(x, pc = FALSE) {
   if (pc) {
