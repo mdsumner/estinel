@@ -271,6 +271,11 @@ build_scl_dsn <- function(assets, res = 10, div = NULL, root = tempdir()) {
   
   location <- assets$location[1L]
   outfile <- sprintf("%s/%s_%s_scl.tif", root, location, format(assets$solarday[1]))
+  
+  outfile <- sprintf("%s/%s_%s.tif", root, location, format(assets$solarday[1]))
+  if (gdalraster::vsi_stat(outfile, "exists")) {
+    return(outfile)  ## silently ignore
+  }
   set_gdal_envs()
   exnames <- c("xmin", "xmax", "ymin", "ymax")
   ## every group of rows has a single extent
@@ -334,6 +339,10 @@ put_bytes_at <- function(input, output) {
 build_image_dsn <- function(assets, res, resample = "near", rootdir = tempdir()) {
   root <- sprintf("%s/%s", rootdir, assets$collection[1])
   root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
+  
+  location <- assets$location[1L]
+  outfile <- sprintf("%s/%s_%s.tif", root, location, format(assets$solarday[1]))
+ 
   if (!dir.exists(root)) {
     if (!is_cloud(root)) {
       dir.create(root, showWarnings = FALSE, recursive = TRUE)
@@ -356,8 +365,13 @@ build_image_dsn <- function(assets, res, resample = "near", rootdir = tempdir())
                           clear_test = assets$clear_test[1], 
                           solarday = assets$solarday[1],
                           scl_tif = assets$scl_tif[1], assets = list(assets))
-  print(out$solarday)
-  print(out$location)
+  
+  if (gdalraster::vsi_stat(outfile, "exists")) {
+    out$outfile <- outfile
+    return(out)  ## silently ignore
+  }
+  #print(out$solarday)
+  #print(out$location)
   ## didn't like use of gdalraster::srs_to_wkt here ??
   for (i in seq_along(bandnames)) {
 
@@ -374,9 +388,7 @@ build_image_dsn <- function(assets, res, resample = "near", rootdir = tempdir())
   vrt <- try(vapour::buildvrt(unlist(bands)), silent = TRUE)
   if (inherits(vrt, "try-error")) return(out)
   
-  location <- assets$location[1L]
-   outfile <- sprintf("%s/%s_%s.tif", root, location, format(assets$solarday[1]))
-   print(outfile)
+  # print(outfile)
    if (!is_cloud(root)) {
       if (!fs::dir_exists(root)) dir.create(root, showWarnings = FALSE, recursive = TRUE)
    }
@@ -399,6 +411,9 @@ is_cloud <- function(x) {
 build_image_png <- function(dsn) {
   if (is.na(dsn)) return(NA_character_)
   outpng <- gsub("tif$", "png", dsn)
+  if (gdalraster::vsi_stat(outpng, "exists")) {
+    return(outpng)  ## silently ignore
+  }
   if (!fs::dir_exists(dirname(outpng))) {
     if (!is_cloud(outpng))  {
       fs::dir_create(dirname(outpng))

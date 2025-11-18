@@ -7,24 +7,25 @@ pkgs <- c("tarchetypes", "crew", "reproj", "sds", "jsonlite", "vapour", "targets
 
 tar_source()
 
-# bucket <- "estinel"
+ bucket <- "estinel"
 # prefix <- "sentinel-2-c1-l2a"
-# rootdir <- sprintf("/vsis3/%s/%s", bucket, prefix)
-rootdir <- "/perm_storage/home/data/_targets_locationtifs"
-# endpoint <- "https://projects.pawsey.org.au"
+rootdir <- sprintf("/vsis3/%s", bucket)
+#rootdir <- "/perm_storage/home/data/_targets_locationtifs"
+ endpoint <- "https://projects.pawsey.org.au"
 # ## key/secret for GDAL and paws-r, REGION for paws-r, endpoint, vsil, virtual for GDAl
 Sys.setenv(
-  GDAL_DISABLE_READDIR_ON_OPEN = "YES"
-#  AWS_ACCESS_KEY_ID = Sys.getenv("PAWSEY_AWS_ACCESS_KEY_ID"),
-#            AWS_SECRET_ACCESS_KEY = Sys.getenv("PAWSEY_AWS_SECRET_ACCESS_KEY"),
-#            AWS_REGION = "",
-#            AWS_S3_ENDPOINT = gsub("^https://", "", endpoint),
-#            CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE = "YES",
-#            AWS_VIRTUAL_HOSTING = "NO"
+  GDAL_DISABLE_READDIR_ON_OPEN = "YES",
+ AWS_ACCESS_KEY_ID = Sys.getenv("PAWSEY_AWS_ACCESS_KEY_ID"),
+           AWS_SECRET_ACCESS_KEY = Sys.getenv("PAWSEY_AWS_SECRET_ACCESS_KEY"),
+           AWS_REGION = "",
+           AWS_S3_ENDPOINT = gsub("^https://", "", endpoint),
+           CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE = "YES",
+           AWS_VIRTUAL_HOSTING = "NO"
 )
+
  
 
-ncpus <- 28
+ncpus <- 12
 #log_directory <- "_targets/logs"
 # Set target options:
 # laws <- list(repository = "aws",
@@ -38,7 +39,7 @@ ncpus <- 28
 
 tar_option_set(
   controller = if (ncpus <= 1) NULL else crew_controller_local(workers = ncpus
-      ,options_local = crew_options_local(log_directory  = "log_directory")
+     # ,options_local = crew_options_local(log_directory  = "log_directory")
       ),
   format = "qs",
   packages =pkgs
@@ -46,8 +47,10 @@ tar_option_set(
 
 tar_assign(
   {
-    provider <- c("https://planetarycomputer.microsoft.com/api/stac/v1/search", "https://earth-search.aws.element84.com/v1/search") |> tar_target()
-    collection <- c("sentinel-2-l2a", "sentinel-2-c1-l2a") |> tar_target()
+    ## "sentinel-2-l2a",
+    #provider <- #c("https://planetarycomputer.microsoft.com/api/stac/v1/search", 
+      provider <- c("https://earth-search.aws.element84.com/v1/search") |> tar_target()
+    collection <- c( "sentinel-2-c1-l2a") |> tar_target()
   tabl <-  rbind(
     data.frame(location = "Hobart", lon = 147.3257, lat = -42.8826), 
     data.frame(location = "Dawson_Lampton_Ice_Tongue", lon  = -26.760, lat = -76.071),
@@ -56,15 +59,17 @@ tar_assign(
                                            lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
                                  data.frame(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348),
                                  data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
-                                 data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871)
-                                , cleanup_table() 
+                                 data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871),
+    data.frame(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
+    data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) )
+    , cleanup_table() 
   ) |> tar_target()
   
   resolution <- 10 |> tar_target()
   radiusy <- 3000 |> tar_target()
   radiusx <- radiusy |> tar_target()
   
-  daterange <- format(as.POSIXct(c(as.POSIXct("2015-06-23 00:00:00", tz = "UTC"), Sys.time()))) |> tar_target()
+  daterange <- format(as.POSIXct(c(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), Sys.time()))) |> tar_target()
   lon <- tabl$lon |> tar_target()
   lat <- tabl$lat |> tar_target() 
   location <- tabl$location |> tar_target()
@@ -94,16 +99,16 @@ tar_assign(
    images_table <- dplyr::bind_rows(stac_tables) |> dplyr::group_by(location, solarday, provider) |> tar_group() |> tar_target( iteration = "group")
     scl_tifs <- build_scl_dsn(images_table, res = resolution, root = rootdir) |> tar_target( pattern = map(images_table))
 # # #
-  scl_filter <- filter_fun(read_dsn(scl_tifs)) |> tar_target(pattern = map(scl_tifs), iteration = "vector")
-# # #  #
-   filter_table  <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_filter[tar_group])  |>  tar_target()
-   group_table <- filter_table |> make_group_table_providers(provider, collection) |> 
-       group_by(location, solarday, collection) |> tar_group() |>
-       tar_target(iteration = "group")
-     dsn_table <- build_image_dsn(group_table, res = resolution, rootdir = rootdir)  |> tar_target(pattern = map(group_table))
-#    pngs <- build_image_png(dsn_table$outfile) |> tar_target(pattern = map(dsn_table))
-#     scenes <- mutate(dsn_table, outpng = pngs) |> tar_target()
-#     viewtable <- mutate(scenes, outfile = gsub("/vsis3", endpoint, outfile), outpng = gsub("/vsis3", endpoint, outpng)) |> tar_target()
+   scl_filter <- filter_fun(read_dsn(scl_tifs)) |> tar_target(pattern = map(scl_tifs), iteration = "vector")
+# # # #  #
+    filter_table  <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_filter[tar_group])  |>  tar_target()
+    group_table <- filter_table |> make_group_table_providers(provider, collection) |> 
+        group_by(location, solarday, collection) |> tar_group() |>
+        tar_target(iteration = "group")
+      dsn_table <- build_image_dsn(group_table, res = resolution, rootdir = rootdir)  |> tar_target(pattern = map(group_table))
+    pngs <- build_image_png(dsn_table$outfile) |> tar_target(pattern = map(dsn_table))
+      scenes <- mutate(dsn_table, outpng = pngs) |> tar_target()
+      viewtable <- mutate(scenes, outfile = gsub("/vsis3", endpoint, outfile), outpng = gsub("/vsis3", endpoint, outpng)) |> tar_target()
 }
   )
 
