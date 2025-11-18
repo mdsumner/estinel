@@ -89,9 +89,9 @@ tar_assign(
     dsn_table <- build_image_dsn(group_table, res = resolution, rootdir = rootdir)  |> tar_target(pattern = map(group_table))
     pngs <- build_image_png(dsn_table$outfile) |> tar_target(pattern = map(dsn_table))
     viewtable <- mutate(dsn_table, outpng = pngs) |>
-      mutate(outfile = gsub("/vsis3", endpoint, outfile), 
-             outpng = gsub("/vsis3", endpoint, outpng), 
-             scl_tif = gsub("/vsis3", endpoint, scl_tif)) |> 
+      mutate(outfile = gsub("/vsis3", endpoint, outfile),
+             outpng = gsub("/vsis3", endpoint, outpng),
+             scl_tif = gsub("/vsis3", endpoint, scl_tif)) |>
       tar_target()
 }
   )

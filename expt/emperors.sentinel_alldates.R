@@ -3,6 +3,26 @@
 
 dates <- c(as.Date("2015-01-01"), Sys.Date())
 
+mtrx <- function(x) {
+  as.vector(x)# matrix(x, attr(x, "gis")$dim[2L], byrow = TRUE))
+}
+
+
+nicebbox <- function(dat, min = .05, max = 1) {
+  ex <- c(range(dat[,1, drop = TRUE]), range(dat[, 2, drop = TRUE]))
+  dif <- diff(ex)[c(1, 3)]
+  if (any(dif < min)) {
+    f <- min
+  }
+  if (any(dif > max)) {
+    f <- max
+  }
+  ## take the middle and give it the result
+  cs <- 1/cos(mean(ex[3:4]) * pi/180)
+  out <- rep(c(mean(ex[1:2]), mean(ex[3:4])), each = 2L) + c(-cs,cs, -1, 1) * f
+  out
+  
+}
 bf <- 200
 mksquash <- function(from = c(1000, 15000)) {
   function(x) {
