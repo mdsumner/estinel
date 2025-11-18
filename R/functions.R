@@ -26,9 +26,17 @@ cleanup_table <- function() {
   x$location <- trimws(x$location)
   x$location <- gsub("\\s+", "_", x$location, perl = TRUE)
   x$location <- gsub("é", "e", x$location)
+ 
   x
 }
 
+fill_values <- function(x) {
+  for (var in c("resolution", "radiusx", "radiusy")) {
+    bad <- is.na(x[[var]])
+    x[[var]][bad] <- x[[var]][1]  ## better not be NA
+  }
+  x
+}
 filter_the_table <- function(x, cfilter) {
   dplyr::filter(x, tar_group %in% which(cfilter)) |>
     dplyr::group_by(location, solarday)
