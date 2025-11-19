@@ -9,12 +9,39 @@
 #'
 #' @return the input raster, cropped corresponding to the plot made
 #' @export
-pl <- function(...) {x <- sample_n(tar_read(viewtable) |> dplyr::filter(clear_test < .6, location == "West_Ice_Shelf"), 1); 
-plotRGB(stretch_q(rast(x$outfile), ...), smooth = FALSE); x}
+pl <- function(...) {x <- dplyr::sample_n(tar_read(viewtable) |> dplyr::filter(clear_test < .6, location == "Macquarie_Island_Station"), 1); 
+terra::plotRGB(stretch_q(terra::rast(x$outfile), ...), smooth = FALSE); x}
+
+sentinel_palette <- function() {
+  as.data.frame(list(value = 0:11, class = c("No Data (Missing data)", "Saturated or defective pixel", 
+                                                   "Topographic casted shadows (called Dark features/Shadows for data before 2022-01-25)", 
+                                                   "Cloud shadows", "Vegetation", "Not-vegetated", "Water", "Unclassified", 
+                                                   "Cloud medium probability", "Cloud high probability", "Thin cirrus", 
+                                                   "Snow or ice"), col = c("#000000", "#ff0000", "#2f2f2f", "#643200", 
+                                                                           "#00a000", "#ffe65a", "#0000ff", "#808080", "#c0c0c0", "#ffffff", 
+                                                                           "#64c8ff", "#ff96ff")))
+  
+}
+ pl2 <- function(...) {
+  x <- dplyr::sample_n(tar_read(viewtable), 1) # |> 
+                         #dplyr::filter(clear_test < .6, location == "Macquarie_Island_Station"), 1); 
+  op <- par(mfrow = c(1, 2))
+cl <- sentinel_palette()
+r <- terra::rast(x$scl_tif)
+coltab(r) <- dplyr::transmute(cl, value, col)
+levels(r) <- dplyr::transmute(cl, ID = value, category = class)
+
+terra::plot(r)
+terra::plot(r * 0)
+terra::plotRGB(stretch_q(terra::rast(x$outfile), ...), smooth = FALSE, add = TRUE); 
+
+par(op)
+x
+}
 
 
 plold <- function(x) {
-  if (missing(x)) x <- sample_n(viewtable, 1); 
+  if (missing(x)) x <- dplyr::sample_n(viewtable, 1); 
   op <- par(mfrow = c(1, 2));
   plotRGB(rr <- rast(sprintf("/vsicurl/%s", x$outpng), raw = T)); 
   plotRGB(rr <- stretch_hist(rast(sprintf("/vsicurl/%s", x$outfile), raw = T))); 

@@ -62,6 +62,8 @@ tar_assign(
     extent <- vaster::buffer_extent(reproj::reproj_extent(extentlaea, crs, source = crslaea), resolution) |> 
      tar_target(pattern = map(extentlaea, crs, crslaea, resolution), iteration = "list")
     ll_extent <- unproj(extent, source = crs) |> tar_target(pattern = map(extent, crs), iteration = "list")
+    
+    
     ## this table now has everything we've created so far
     qtable0 <-  dplyr::mutate(tabl, start = daterange[1], end = daterange[2],crs = crs,
                    lonmin = ll_extent[1L], lonmax = ll_extent[2L], latmin = ll_extent[3L], latmax = ll_extent[4L],
@@ -71,9 +73,9 @@ tar_assign(
     query_list <- getstac_query(qtable1) |> tar_target( pattern = map(qtable1), iteration = "list")
     query <- unname(unlist(query_list)) |> tar_target()
     stac_json0 <- getstac_json(query) |> tar_target(pattern = map(query), iteration = "list")
-     bad <- (lengths(stac_json0) < 1) |> tar_target()
-     qtable2 <- (qtable1[!bad, ]) |> tar_target()
-     qtable <-  mutate(qtable2, js = stac_json0[!bad]) |> tar_target()
+    bad <- (lengths(stac_json0) < 1) |> tar_target()
+    qtable2 <- (qtable1[!bad, ]) |> tar_target()
+    qtable <-  mutate(qtable2, js = stac_json0[!bad]) |> tar_target()
     stac_tables <- process_stac_table2(qtable) |> 
       tar_target( pattern = map(qtable), iteration = "list")
     images_table <- dplyr::bind_rows(stac_tables) |> 

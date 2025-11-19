@@ -54,8 +54,6 @@ build_image_dsn <- function(assets, res, resample = "near", rootdir = tempdir())
   if (!is_cloud(root)) {
     if (!fs::dir_exists(root)) dir.create(root, showWarnings = FALSE, recursive = TRUE)
   }
-  
-  
   test <- put_bytes_at(vrt, outfile)
   if (inherits(test, "try-error")) return(out)
   out$outfile <- outfile
@@ -94,7 +92,7 @@ build_scl_dsn <- function(assets, res = 10, div = NULL, root = tempdir()) {
   outfile <- sprintf("%s/%s_%s_scl.tif", root, location, format(assets$solarday[1]))
   
   if (gdalraster::vsi_stat(outfile, "exists")) {
-    # return(outfile)  ## silently ignore
+    return(outfile)  ## silently ignore
   }
   set_gdal_envs()
   exnames <- c("xmin", "xmax", "ymin", "ymax")
