@@ -150,21 +150,29 @@ getstac_query <- function(x, limit = 300) {
   #href <- character(length(provider))
   #for (i in seq_along(href)) {
   href <- sds::stacit(llex, date, limit = limit, collections = x$collection[1L], provider = x$provider[1L])
-  #}
-  href
+  x$query <- href
+  x
 }
 ## get the available dates
-getstac_json <- function(query) {
-  
-  js <- try(jsonlite::fromJSON(query))
-  if (inherits(js, "try-error") || (length(js$features) < 1) || (!is.null(js$numberReturned) &&js$numberReturned < 1)) return(list())
-  js 
+getstac_json <- function(x) {
+  js <- try(jsonlite::fromJSON(x$query))
+  if (inherits(js, "try-error") || (length(js$features) < 1) || (!is.null(js$numberReturned) &&js$numberReturned < 1)) {
+    return(list())
+  } else {
+    return(js)
+  }
+  x
 }
 
 is_cloud <- function(x) {
   grepl("^/vsi", x)
 }
-
+join_stac_json <- function(querytable, stac_json_list) {
+  bad <- !(lengths(stac_json_list) == 8)
+  querytable <- dplyr::filter(querytable, !bad)
+  querytable$js <- stac_json_list[!bad]
+  querytable
+}
 localproj <- function(x) {
   sprintf("+proj=laea +lon_0=%f +lat_0=%f", x[1], x[2])
 }
@@ -184,7 +192,16 @@ mk_crs <- function(lon, lat) {
   pt <- cbind(lon, lat)
   localproj(pt)
 }
-
+mk_spatial_window <- function(x) {
+  crslaea <- mk_crs(x$lon, x$lat)
+  extentlaea <- mkextent(cbind(x$lon, x$lat), x$radiusy, x$radiusx, cosine = FALSE)
+  x$crs <- mk_utm_crs(x$lon, x$lat)
+  extent <- 
+    vaster::buffer_extent(reproj::reproj_extent(extentlaea, x$crs, source = crslaea), x$resolution)
+  ll_extent <- unproj(extent, source = x$crs)
+  dplyr::mutate(x, lonmin = ll_extent[1L], lonmax = ll_extent[2L], latmin = ll_extent[3L], latmax = ll_extent[4L],
+                 xmin = extent[1L], xmax = extent[2L], ymin = extent[3L], ymax = extent[4L])
+}
 mk_utm_crs <-function(lon, lat) {
   zone <- floor((lon + 180) / 6) + 1
   south <- lat < 0
@@ -235,22 +252,27 @@ process_stac_table2 <- function(table) {
   js <- table[["js"]][[1]]
   hrefs <- tibble::as_tibble(lapply(js$features$assets, \(.x) .x$href))
   hrefs$datetime <- as.POSIXct(strptime(js$features$properties$datetime, "%Y-%m-%dT%H:%M:%OSZ"), tz = "UTC")
-  ## had to google my own notes for this ... https://github.com/mdsumner/tacky/issues/2
-  bbox <- do.call(rbind, js$features$bbox)
-  centroid <- c(mean(bbox[, c(1, 3)]), mean(bbox[, c(2, 4)]))
-  hrefs$centroid_lon <- js$features$properties$`proj:centroid`[,2] %||%  centroid[1]
-  hrefs$centroid_lat <- js$features$properties$`proj:centroid`[,1] %||% centroid[2]
   
-  hrefs$solarday <- as.Date(round(hrefs$datetime - (hrefs$centroid_lon/15 * 3600), "days"))
-  hrefs$location <- table$location
-  hrefs$xmin <- table$xmin
-  hrefs$xmax <- table$xmax
-  hrefs$ymin <- table$ymin
-  hrefs$ymax <- table$ymax
-  hrefs$crs <- table$crs
-  hrefs$collection <- table$collection
-  hrefs$provider <- table$provider
-  hrefs
+#  bbox <- do.call(rbind, js$features$bbox)
+#  return(hrefs)
+  centroid <- lapply(js$features$bbox, function(bbox) c(mean(bbox[c(1, 3)]), mean(bbox[c(2, 4)])))
+  centroid_lon <- js$features$properties$`proj:centroid`[,2] %||%  unlist(lapply(centroid, "[", 1))
+  centroid_lat <- js$features$properties$`proj:centroid`[,1] %||% unlist(lapply(centroid, "[", 2))
+  #hrefs$centroid_lon <- centroid_lon
+  #hrefs$centroid_lat <- centroid_lat
+  hrefs$solarday <- as.Date(round(hrefs$datetime - (centroid_lon/15 * 3600), "days"))
+  # hrefs$location <- table$location
+  # hrefs$xmin <- table$xmin
+  # hrefs$xmax <- table$xmax
+  # hrefs$ymin <- table$ymin
+  # hrefs$ymax <- table$ymax
+  # hrefs$crs <- table$crs
+  # hrefs$collection <- table$collection
+  # hrefs$provider <- table$provider
+  # 
+  table$assets <- list(hrefs)
+  table
+  #hrefs
 }
 
 put_bytes_at <- function(input, output) {

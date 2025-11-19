@@ -55,37 +55,23 @@ tar_assign(
      data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) )
       , cleanup_table() ) |>  fill_values() |> tar_target()
     daterange <- format(as.POSIXct(c(as.POSIXct("2015-01-01 00:00:00", tz = "UTC"), Sys.time()))) |> tar_target()
-    crslaea <- mk_crs(tabl$lon, tabl$lat) |> tar_target( pattern = map(tabl), iteration = "list")
-    extentlaea <- mkextent(cbind(tabl$lon, tabl$lat), tabl$radiusy, tabl$radiusx, cosine = FALSE) |> tar_target(pattern = map(tabl), iteration = "list")
-    crs <- mk_utm_crs(tabl$lon, tabl$lat) |> tar_target(pattern = map(tabl))
-    resolution <- tabl$resolution |> tar_target()
-    extent <- vaster::buffer_extent(reproj::reproj_extent(extentlaea, crs, source = crslaea), resolution) |> 
-     tar_target(pattern = map(extentlaea, crs, crslaea, resolution), iteration = "list")
-    ll_extent <- unproj(extent, source = crs) |> tar_target(pattern = map(extent, crs), iteration = "list")
-    
-    
-    ## this table now has everything we've created so far
-    qtable0 <-  dplyr::mutate(tabl, start = daterange[1], end = daterange[2],crs = crs,
-                   lonmin = ll_extent[1L], lonmax = ll_extent[2L], latmin = ll_extent[3L], latmax = ll_extent[4L],
-                   xmin = extent[1L], xmax = extent[2L], ymin = extent[3L], ymax = extent[4L]) |>
-                tar_target(pattern = map(ll_extent, extent, crs, tabl))
-    qtable1 <- modify_qtable_yearly(qtable0, daterange[1L], daterange[2L], provider, collection) |> tar_target()
-    query_list <- getstac_query(qtable1) |> tar_target( pattern = map(qtable1), iteration = "list")
-    query <- unname(unlist(query_list)) |> tar_target()
-    stac_json0 <- getstac_json(query) |> tar_target(pattern = map(query), iteration = "list")
-    bad <- (lengths(stac_json0) < 1) |> tar_target()
-    qtable2 <- (qtable1[!bad, ]) |> tar_target()
-    qtable <-  mutate(qtable2, js = stac_json0[!bad]) |> tar_target()
-    stac_tables <- process_stac_table2(qtable) |> 
-      tar_target( pattern = map(qtable), iteration = "list")
-    images_table <- dplyr::bind_rows(stac_tables) |> 
-      dplyr::group_by(location, solarday, provider) |> 
-      tar_group() |> tar_target( iteration = "group")
-    scl_tifs <- build_scl_dsn(images_table, res = resolution, root = rootdir) |> 
-      tar_target( pattern = map(images_table))
-    scl_filter <- filter_fun(read_dsn(scl_tifs)) |> tar_target(pattern = map(scl_tifs), iteration = "vector")
-    filter_table  <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_filter[tar_group])  |>  tar_target()
-    group_table <- filter_table |> make_group_table_providers(provider, collection) |>
+    spatial_window <- mk_spatial_window(tabl) |> tar_target(pattern = map(tabl))
+    qtable1 <- modify_qtable_yearly(spatial_window, daterange[1L], daterange[2L], provider, collection) |> tar_target()
+    querytable <- getstac_query(qtable1) |> tar_target( pattern = map(qtable1))
+    ## at this point the set reduces, because not every query has assets (we either return a list with json results, or a NULL so the dataframe collation blats them out)
+    stac_json_list <- getstac_json(querytable) |> tar_target(pattern = map(querytable), iteration = "list")
+    stac_json_table <- join_stac_json(querytable, stac_json_list) |> tar_target()
+    stac_tables <- process_stac_table2(stac_json_table) |> 
+      tar_target( pattern = map(stac_json_table))
+    images_table <- tidyr::unnest(stac_tables |> dplyr::select(-js), cols = c(assets)) |> 
+       dplyr::group_by(location, solarday, provider) |> 
+       tar_group() |> tar_target( iteration = "group")
+     scl_tifs <- build_scl_dsn(images_table, res = resolution, root = rootdir) |> 
+       tar_target( pattern = map(images_table))
+    scl_clear <- filter_fun(read_dsn(scl_tifs)) |> tar_target(pattern = map(scl_tifs), iteration = "vector")
+   # filter_table  <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_clear[tar_group])  |>  tar_target()
+    group_table <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_clear[tar_group]) |> 
+      make_group_table_providers(provider, collection) |>
         group_by(location, solarday, collection) |> tar_group() |>
         tar_target(iteration = "group")
     dsn_table <- build_image_dsn(group_table, res = resolution, rootdir = rootdir)  |> tar_target(pattern = map(group_table))
