@@ -86,6 +86,14 @@
       </svg>
     );
 
+    const HelpCircle = () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+    );
+
     function SatImageBrowser() {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -95,6 +103,7 @@
       const [viewMode, setViewMode] = useState('single');
       const [compareIndices, setCompareIndices] = useState([0, 1]);
       const [showThumbnails, setShowThumbnails] = useState(true);
+      const [showHelp, setShowHelp] = useState(false);
 
       // Load catalog on mount
       useEffect(() => {
@@ -132,17 +141,28 @@
           if (e.key === 'ArrowLeft') goToPrevious();
           if (e.key === 'ArrowRight') goToNext();
           if (e.key === 'g' || e.key === 'G') setShowThumbnails(prev => !prev);
+          if (e.key === '?') setShowHelp(prev => !prev);
         };
         window.addEventListener('keydown', handleKeyPress);
         return () => window.removeEventListener('keydown', handleKeyPress);
       }, [currentIndex, currentImages.length]);
 
       const goToNext = () => {
-        setCurrentIndex((prev) => (prev + 1) % currentImages.length);
+        if (viewMode === 'single') {
+          setCurrentIndex((prev) => (prev + 1) % currentImages.length);
+        } else {
+          // In compare mode, advance the right image
+          setCompareIndices(prev => [prev[0], Math.min(prev[1] + 1, currentImages.length - 1)]);
+        }
       };
 
       const goToPrevious = () => {
-        setCurrentIndex((prev) => (prev - 1 + currentImages.length) % currentImages.length);
+        if (viewMode === 'single') {
+          setCurrentIndex((prev) => (prev - 1 + currentImages.length) % currentImages.length);
+        } else {
+          // In compare mode, go back on the right image
+          setCompareIndices(prev => [prev[0], Math.max(prev[1] - 1, 0)]);
+        }
       };
 
       const handleLocationChange = (location) => {
@@ -218,6 +238,13 @@
                   title="Compare mode"
                 >
                   <Columns2 />
+                </button>
+                <button
+                  onClick={() => setShowHelp(!showHelp)}
+                  className={`p-2 rounded ${showHelp ? 'bg-blue-600' : 'bg-gray-700'} hover:bg-blue-700`}
+                  title="Help"
+                >
+                  <HelpCircle />
                 </button>
               </div>
             </div>
@@ -333,9 +360,39 @@
             )}
           </div>
 
+          {/* Help panel */}
+          {showHelp && (
+            <div className="bg-gray-800 border-t border-gray-700 p-4">
+              <div className="max-w-4xl mx-auto">
+                <h3 className="text-lg font-bold mb-3">How to Use</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <h4 className="font-semibold text-blue-400 mb-2">Navigation</h4>
+                    <ul className="space-y-1 text-gray-300">
+                      <li>• <strong>← →</strong> arrows: Navigate through images</li>
+                      <li>• <strong>G</strong> key: Toggle thumbnail panel</li>
+                      <li>• Click thumbnails to jump to specific images</li>
+                      <li>• Use dropdown to switch between locations</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-blue-400 mb-2">Compare Mode</h4>
+                    <ul className="space-y-1 text-gray-300">
+                      <li>• Click the <strong>columns icon</strong> to enable</li>
+                      <li>• <strong>Left image</strong> = anchor (stays fixed)</li>
+                      <li>• <strong>← →</strong> arrows: Step right image through time</li>
+                      <li>• Click thumbnails to set any arbitrary pair</li>
+                      <li>• Perfect for temporal change detection!</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Keyboard shortcuts hint */}
           <div className="bg-gray-800 border-t border-gray-700 px-4 py-2 text-xs text-gray-400">
-            Shortcuts: ← → arrows to navigate | G to toggle thumbnails
+            Shortcuts: ← → arrows to navigate | G to toggle thumbnails | ? for help
           </div>
         </div>
       );
