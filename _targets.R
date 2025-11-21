@@ -13,7 +13,7 @@ tar_source()
 
 set_gdal_envs()
 
-ncpus <- 24
+ncpus <- 30
 log_directory <- "_targets/logs"
 
 tar_option_set(
@@ -23,6 +23,10 @@ tar_option_set(
   format = "qs",
   packages =pkgs
 )
+
+## missing values
+## the region we look at might be missing (it's off-swath, then clear_test will be NA because all NaN)
+## there are some very few missing assets on element84
 
 tar_assign(
   {
@@ -54,16 +58,17 @@ tar_assign(
     group_table <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_clear[tar_group]) |> 
       make_group_table_providers(provider, collection) |>
         group_by(location, solarday, collection) |> tar_group() |>
-        tar_target(iteration = "group")
-    dsn_table <- build_image_dsn(group_table, rootdir = rootdir)  |> tar_target(pattern = map(group_table))
-    pngs <- build_image_png(dsn_table$outfile) |> tar_target(pattern = map(dsn_table))
+        tar_target()
+    dsn_table <- build_image_dsn(group_table, rootdir = rootdir)  |> tar_target(iteration = "group")
+    pngs <- build_image_png(dsn_table, force = FALSE) |> tar_target(pattern = map(dsn_table))
+     
     thumbs <- build_thumb(pngs) |> tar_target(pattern = map(pngs)) 
-    viewtable <- mutate(dsn_table, outpng = pngs, thumb = thumbs) |>
+    viewtableNA <- mutate(dsn_table, outpng = pngs, thumb = thumbs) |>
       mutate(outfile = gsub("/vsis3", endpoint, outfile),
              outpng = gsub("/vsis3", endpoint, outpng),
              scl_tif = gsub("/vsis3", endpoint, scl_tif), 
-             thumb = gsub("/vsis3", endpoint, thumb)) |>
-      dplyr::filter(!is.na(outfile), !is.na(outpng)) |> 
+             thumb = gsub("/vsis3", endpoint, thumb)) |> tar_target()
+    viewtable <- viewtableNA |>   dplyr::filter(!is.na(outfile), !is.na(outpng)) |> 
       tar_target()
 }
   )

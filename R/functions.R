@@ -23,6 +23,7 @@ build_image_dsn <- function(assets, res = 10, resample = "near", rootdir = tempd
     
   }
   out <-   tibble::tibble(outfile = NA_character_, location = assets$location[1], 
+                          SITE_ID = assets$SITE_ID,
                           clear_test = assets$clear_test[1], 
                           solarday = assets$solarday[1],
                           scl_tif = assets$scl_tif[1], assets = list(assets))
@@ -58,11 +59,21 @@ build_image_dsn <- function(assets, res = 10, resample = "near", rootdir = tempd
   out
 }
 
-build_image_png <- function(dsn) {
+build_image_png <- function(x, force = FALSE) {
+  test <- try({
+  dsn <- x[["outfile"]]
+  if (length(dsn) > 1) {
+    print("bad")
+    print(dsn)
+  }
+  set_gdal_envs()
+  Sys.unsetenv("AWS_NO_SIGN_REQUEST")
   if (is.na(dsn)) return(NA_character_)
   outpng <- gsub("tif$", "png", dsn)
   if (gdalraster::vsi_stat(outpng, "exists")) {
-    return(outpng)  ## silently ignore
+    if (!force) {
+      return(outpng)  ## silently ignore
+    }
   }
   if (!fs::dir_exists(dirname(outpng))) {
     if (!is_cloud(outpng))  {
@@ -70,9 +81,10 @@ build_image_png <- function(dsn) {
     }
   }
   # writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
-  test1 <- try(r <- terra::rast(dsn, raw = TRUE), silent = TRUE)
-  if (inherits(test1, "try-error")) return(NA_character_)
-  test <- try(terra::writeRaster(stretch_hist(r), outpng, overwrite = TRUE, datatype = "INT1U"), silent = TRUE)
+  r <- terra::rast(dsn, raw = TRUE)
+
+  terra::writeRaster(stretch_q(r), outpng, overwrite = TRUE, datatype = "INT1U")
+})
   #gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
   if (inherits(test, "try-error")) return(NA_character_)
   outpng
@@ -93,6 +105,7 @@ build_locations_table <- function() {
     , cleanup_table() ) |>  fill_values()
 }
 build_thumb <- function(dsn) {
+  test <- try({
   if (is.na(dsn)) {
     print("bad dsn!!")
     return(NA_character_)
@@ -109,7 +122,6 @@ build_thumb <- function(dsn) {
   Sys.setenv(GDAL_PAM_ENABLED = "NO")
   on.exit(Sys.setenv(GDAL_PAM_ENABLED = "YES"), add = TRUE)
   trans <- gdalraster::translate(dsn, tf <- tempfile(fileext = ".png", tmpdir = "/vsimem"), cl_arg = c("-outsize", "12.5%", "12.5%"))
-  if (inherits(trans, "try-error")) return(NA_character_)
   con <- new(gdalraster::VSIFile, tf, "r")
   bytes <- con$ingest(-1)
   con$close()
@@ -122,12 +134,13 @@ build_thumb <- function(dsn) {
   
   #Sys.setenv(GDAL_PAM_ENABLED = "NO")
   #test <- try(terra::writeRaster(terra::project(r, r2), outfile, filetype = "PNG"))
-  
+  })
+  if (inherits(test, "try-errro")) return(NA_character_)
   outfile
   
 }
 build_scl_dsn <- function(assets, res = 10, div = NULL, root = tempdir()) {
-  
+  set_gdal_envs()
   root <- sprintf("%s/%s/%s", root, assets$collection[1L], format(assets$solarday[1L], "%Y/%m/%d"))
   if (!dir.exists(root)) {
     if (!is_cloud(root)) {
@@ -341,6 +354,7 @@ read_dsn <- function(x) {
   if (is.null(x) || is.na(x)) return(NULL)
   ds <- try(new(gdalraster::GDALRaster, x[[1]]))
   if (inherits(ds, "try-error")) {
+    print("oops read_dsn error")
     return(NULL)
   }
   on.exit(ds$close(), add = TRUE)
@@ -359,7 +373,8 @@ set_gdal_envs <- function() {
     AWS_VIRTUAL_HOSTING = "NO", 
     GDAL_HTTP_MAX_RETRY = "4",
     #GDAL_DISABLE_READDIR_ON_OPEN = "EMPTY_DIR", 
-    GDAL_HTTP_RETRY_DELAY = "10"
+    GDAL_HTTP_RETRY_DELAY = "10", 
+    AWS_NO_SIGN_REQUEST = "YES"
   )
   
 }

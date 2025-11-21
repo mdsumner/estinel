@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Satellite Image Browser</title>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // UPDATE THIS URL to point to your JSON catalog on Pawsey
+    const CATALOG_URL = 'https://projects.pawsey.org.au/estinel/catalog/image-catalog.json';
+
+    // Sample data for testing (remove this when using real catalog)
+    const SAMPLE_DATA = {
+      locations: [
+        {
+          id: 'loc_001',
+          name: 'Site A - Forest',
+          images: Array.from({ length: 45 }, (_, i) => ({
+            id: `loc_001_img_${String(i + 1).padStart(3, '0')}`,
+            url: `https://picsum.photos/800/600?random=${i + 1}`,
+            date: new Date(2024, 0, i * 8).toISOString().split('T')[0],
+            thumbnail: `https://picsum.photos/200/150?random=${i + 1}`
+          }))
+        },
+        {
+          id: 'loc_002',
+          name: 'Site B - Urban',
+          images: Array.from({ length: 38 }, (_, i) => ({
+            id: `loc_002_img_${String(i + 1).padStart(3, '0')}`,
+            url: `https://picsum.photos/800/600?random=${i + 100}`,
+            date: new Date(2024, 1, i * 7).toISOString().split('T')[0],
+            thumbnail: `https://picsum.photos/200/150?random=${i + 100}`
+          }))
+        },
+        {
+          id: 'loc_003',
+          name: 'Site C - Coastal',
+          images: Array.from({ length: 52 }, (_, i) => ({
+            id: `loc_003_img_${String(i + 1).padStart(3, '0')}`,
+            url: `https://picsum.photos/800/600?random=${i + 200}`,
+            date: new Date(2024, 2, i * 6).toISOString().split('T')[0],
+            thumbnail: `https://picsum.photos/200/150?random=${i + 200}`
+          }))
+        }
+      ]
+    };
+
+    // Lucide icons as inline SVG
+    const ChevronLeft = () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    );
+
+    const ChevronRight = () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
+    );
+
+    const Grid3x3 = () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="3" width="7" height="7"></rect>
+        <rect x="14" y="3" width="7" height="7"></rect>
+        <rect x="14" y="14" width="7" height="7"></rect>
+        <rect x="3" y="14" width="7" height="7"></rect>
+      </svg>
+    );
+
+    const Columns2 = () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="3" width="7" height="18"></rect>
+        <rect x="14" y="3" width="7" height="18"></rect>
+      </svg>
+    );
+
+    function SatImageBrowser() {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+      const [selectedLocation, setSelectedLocation] = useState(null);
+      const [currentIndex, setCurrentIndex] = useState(0);
+      const [viewMode, setViewMode] = useState('single');
+      const [compareIndices, setCompareIndices] = useState([0, 1]);
+      const [showThumbnails, setShowThumbnails] = useState(true);
+
+      // Load catalog on mount
+      useEffect(() => {
+        // Try to load from URL, fall back to sample data if it fails
+        fetch(CATALOG_URL)
+          .then(response => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            return response.json();
+          })
+          .then(catalog => {
+            setData(catalog);
+            const firstLocation = catalog.locations[0];
+            setSelectedLocation(firstLocation);
+            // Start at the last (most recent) image
+            setCurrentIndex(firstLocation.images.length - 1);
+            setCompareIndices([firstLocation.images.length - 2, firstLocation.images.length - 1]);
+            setLoading(false);
+          })
+          .catch(err => {
+            console.warn('Could not load catalog, using sample data:', err.message);
+            setData(SAMPLE_DATA);
+            const firstLocation = SAMPLE_DATA.locations[0];
+            setSelectedLocation(firstLocation);
+            setCurrentIndex(firstLocation.images.length - 1);
+            setCompareIndices([firstLocation.images.length - 2, firstLocation.images.length - 1]);
+            setLoading(false);
+          });
+      }, []);
+
+      const currentImages = selectedLocation?.images || [];
+      const currentImage = currentImages[currentIndex];
+
+      useEffect(() => {
+        const handleKeyPress = (e) => {
+          if (e.key === 'ArrowLeft') goToPrevious();
+          if (e.key === 'ArrowRight') goToNext();
+          if (e.key === 'g' || e.key === 'G') setShowThumbnails(prev => !prev);
+        };
+        window.addEventListener('keydown', handleKeyPress);
+        return () => window.removeEventListener('keydown', handleKeyPress);
+      }, [currentIndex, currentImages.length]);
+
+      const goToNext = () => {
+        setCurrentIndex((prev) => (prev + 1) % currentImages.length);
+      };
+
+      const goToPrevious = () => {
+        setCurrentIndex((prev) => (prev - 1 + currentImages.length) % currentImages.length);
+      };
+
+      const handleLocationChange = (location) => {
+        setSelectedLocation(location);
+        // Start at last image when switching locations
+        setCurrentIndex(location.images.length - 1);
+        setCompareIndices([location.images.length - 2, location.images.length - 1]);
+      };
+
+      const handleThumbnailClick = (index) => {
+        if (viewMode === 'single') {
+          setCurrentIndex(index);
+        } else {
+          if (compareIndices[0] === index) return;
+          setCompareIndices([compareIndices[0], index]);
+        }
+      };
+
+      const toggleCompareMode = () => {
+        if (viewMode === 'single') {
+          setCompareIndices([currentIndex, Math.min(currentIndex + 1, currentImages.length - 1)]);
+          setViewMode('compare');
+        } else {
+          setCurrentIndex(compareIndices[0]);
+          setViewMode('single');
+        }
+      };
+
+      if (loading) {
+        return (
+          <div className="flex items-center justify-center h-screen bg-gray-900 text-gray-100">
+            <div className="text-center">
+              <div className="text-xl mb-2">Loading image catalog...</div>
+              <div className="text-sm text-gray-400">Fetching from {CATALOG_URL}</div>
+            </div>
+          </div>
+        );
+      }
+
+      if (!data || !selectedLocation) return null;
+
+      return (
+        <div className="flex flex-col h-screen bg-gray-900 text-gray-100">
+          {/* Header */}
+          <div className="bg-gray-800 border-b border-gray-700 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <h1 className="text-xl font-bold">Satellite Image Browser</h1>
+                <select
+                  value={selectedLocation.id}
+                  onChange={(e) => handleLocationChange(data.locations.find(l => l.id === e.target.value))}
+                  className="bg-gray-700 text-gray-100 px-3 py-2 rounded border border-gray-600"
+                >
+                  {data.locations.map(loc => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name} ({loc.images.length} images)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowThumbnails(!showThumbnails)}
+                  className={`p-2 rounded ${showThumbnails ? 'bg-blue-600' : 'bg-gray-700'} hover:bg-blue-700`}
+                  title="Toggle thumbnails (G)"
+                >
+                  <Grid3x3 />
+                </button>
+                <button
+                  onClick={toggleCompareMode}
+                  className={`p-2 rounded ${viewMode === 'compare' ? 'bg-blue-600' : 'bg-gray-700'} hover:bg-blue-700`}
+                  title="Compare mode"
+                >
+                  <Columns2 />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-1 overflow-hidden">
+            {/* Main viewer */}
+            <div className="flex-1 flex flex-col">
+              {/* Image display */}
+              <div className="flex-1 bg-black flex items-center justify-center p-4">
+                {viewMode === 'single' ? (
+                  <div className="relative max-w-full max-h-full">
+                    <img
+                      src={currentImage.url}
+                      alt={currentImage.id}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 p-3 text-sm">
+                      <div className="font-mono">{currentImage.id}</div>
+                      <div className="text-gray-400">{currentImage.date}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-4 max-w-full max-h-full">
+                    {compareIndices.map((idx, i) => {
+                      const img = currentImages[idx];
+                      return (
+                        <div key={i} className="relative flex-1 max-w-[48%]">
+                          <img
+                            src={img.url}
+                            alt={img.id}
+                            className="w-full h-full object-contain"
+                          />
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 p-2 text-xs">
+                            <div className="font-mono">{img.id}</div>
+                            <div className="text-gray-400">{img.date}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Navigation controls */}
+              <div className="bg-gray-800 border-t border-gray-700 p-4">
+                <div className="flex items-center justify-between max-w-4xl mx-auto">
+                  <button
+                    onClick={goToPrevious}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-700 rounded hover:bg-gray-600"
+                  >
+                    <ChevronLeft />
+                    Previous
+                  </button>
+                  
+                  <div className="text-center">
+                    {viewMode === 'single' ? (
+                      <div className="text-lg font-mono">
+                        {currentIndex + 1} / {currentImages.length}
+                      </div>
+                    ) : (
+                      <div className="text-sm font-mono">
+                        Comparing: {compareIndices[0] + 1} & {compareIndices[1] + 1}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <button
+                    onClick={goToNext}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-700 rounded hover:bg-gray-600"
+                  >
+                    Next
+                    <ChevronRight />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Thumbnail panel */}
+            {showThumbnails && (
+              <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto">
+                <div className="p-4">
+                  <h3 className="text-sm font-semibold mb-3 text-gray-400">
+                    {selectedLocation.name}
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {currentImages.map((img, idx) => (
+                      <div
+                        key={img.id}
+                        onClick={() => handleThumbnailClick(idx)}
+                        className={`cursor-pointer border-2 rounded overflow-hidden transition-all ${
+                          viewMode === 'single' && idx === currentIndex
+                            ? 'border-blue-500'
+                            : viewMode === 'compare' && compareIndices.includes(idx)
+                            ? 'border-green-500'
+                            : 'border-gray-700 hover:border-gray-500'
+                        }`}
+                      >
+                        <img
+                          src={img.thumbnail}
+                          alt={img.id}
+                          className="w-full h-24 object-cover"
+                        />
+                        <div className="bg-gray-900 p-1 text-xs">
+                          <div className="font-mono truncate">#{idx + 1}</div>
+                          <div className="text-gray-400 text-[10px] truncate">{img.date}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Keyboard shortcuts hint */}
+          <div className="bg-gray-800 border-t border-gray-700 px-4 py-2 text-xs text-gray-400">
+            Shortcuts: ← → arrows to navigate | G to toggle thumbnails
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<SatImageBrowser />, document.getElementById('root'));
+  </script>
+</body>
+</html>
