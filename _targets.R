@@ -51,8 +51,8 @@ tar_assign(
     #provider <- #c("https://planetarycomputer.microsoft.com/api/stac/v1/search", 
     provider <- c("https://earth-search.aws.element84.com/v1/search") |> tar_target()
     collection <- c( "sentinel-2-c1-l2a") |> tar_target()
-    tabl <-  build_locations_table() |> tar_target()
-    daterange <- format(as.POSIXct(c(as.POSIXct("2015-01-01 00:00:00", tz = "UTC"), Sys.time()))) |> tar_target()
+    tabl <-  define_locations_table() |> tar_target()
+    daterange <- format(as.POSIXct(c(as.POSIXct("2024-01-01 00:00:00", tz = "UTC"), Sys.time()))) |> tar_target()
     spatial_window <- mk_spatial_window(tabl) |> tar_target(pattern = map(tabl))
     qtable1 <- modify_qtable_yearly(spatial_window, daterange[1L], daterange[2L], provider, collection) |> tar_target()
     querytable <- getstac_query(qtable1) |> tar_target( pattern = map(qtable1))
@@ -73,9 +73,9 @@ tar_assign(
         group_by(location, solarday, collection) |> tar_group() |>
         tar_target(iteration = "group")
     dsn_table <- build_image_dsn(group_table, rootdir = rootdir)  |> tar_target(pattern = map(group_table))
-    pngs <- build_image_png(dsn_table, force = TRUE) |> tar_target(pattern = map(dsn_table))
+    pngs <- build_image_png(dsn_table, force = FALSE) |> tar_target(pattern = map(dsn_table))
 #      
-    thumbs <- build_thumb(pngs, force = TRUE) |> tar_target(pattern = map(pngs)) 
+    thumbs <- build_thumb(pngs, force = FALSE) |> tar_target(pattern = map(pngs)) 
     viewtableNA <- mutate(dsn_table, outpng = pngs, thumb = thumbs) |>
       mutate(outfile = gsub("/vsis3", endpoint, outfile),
              outpng = gsub("/vsis3", endpoint, outpng),

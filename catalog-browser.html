@@ -486,7 +486,7 @@
             <div className="bg-gray-800 border-t border-gray-700 p-4">
               <div className="max-w-4xl mx-auto">
                 <h3 className="text-lg font-bold mb-3">How to Use</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                   <div>
                     <h4 className="font-semibold text-blue-400 mb-2">Navigation</h4>
                     <ul className="space-y-1 text-gray-300">
@@ -504,8 +504,29 @@
                       <li>• <strong>Left image</strong> = anchor (stays fixed)</li>
                       <li>• <strong>← →</strong> arrows: Step right image through time</li>
                       <li>• Click thumbnails to set any arbitrary pair</li>
-                      <li>• Perfect for temporal change detection!</li>
                     </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-blue-400 mb-2">Files Available</h4>
+                    <div className="text-gray-300 text-xs space-y-1">
+                      <p>From the Download TIF address, replace:</p>
+                      <ul className="space-y-1 mt-1">
+                        <li>• <code className="bg-gray-900 px-1">.tif</code> → <code className="bg-gray-900 px-1">.png</code> for viewable PNG</li>
+                        <li>• <code className="bg-gray-900 px-1">.tif</code> → <code className="bg-gray-900 px-1">_scl.tif</code> for Sentinel categories</li>
+                      </ul>
+                      <p className="text-[10px] text-gray-400 mt-2">STAC item JSON will be added</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                  <h4 className="font-semibold text-blue-400 mb-2">Read TIF in R</h4>
+                  <div className="text-gray-300 text-xs space-y-1">
+                    <p>Right-click "Download TIF" → Copy link address, then:</p>
+                    <code className="block bg-gray-900 p-2 rounded mt-1 font-mono">
+                      r &lt;- terra::rast("/vsicurl/[copied-address]")<br/>
+                      terra::plotRGB(r, stretch = TRUE)
+                    </code>
+                    <p className="text-[10px] text-gray-400 mt-1">Other stretch options will be added here</p>
                   </div>
                 </div>
               </div>

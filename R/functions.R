@@ -90,21 +90,7 @@ build_image_png <- function(x, force = FALSE) {
   if (inherits(test, "try-error")) return(NA_character_)
   outpng
 }
-build_locations_table <- function() {
-  dplyr::bind_rows(
-    ## first row is special, we include resolution and radiusx/y these are copied throughout if NA
-    ## but other rows may have this value set also
-    data.frame(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy=3000), 
-    data.frame(location = "Dawson_Lampton_Ice_Tongue", lon  = -26.760, lat = -76.071),
-    data.frame(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600)), 
-    data.frame(location = "Casey_Station", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
-    data.frame(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348),
-    data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
-    data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871),
-    data.frame(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
-    data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) )
-    , cleanup_table() ) |>  fill_values()
-}
+
 build_thumb <- function(dsn, force = FALSE) {
   test <- try({
   if (is.na(dsn)) {
@@ -185,13 +171,28 @@ cleanup_table <- function() {
   
   x
 }
-
+define_locations_table <- function() {
+  dplyr::bind_rows(
+    ## first row is special, we include resolution and radiusx/y these are copied throughout if NA
+    ## but other rows may have this value set also
+    data.frame(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy=3000), 
+    data.frame(location = "Dawson_Lampton_Ice_Tongue", lon  = -26.760, lat = -76.071),
+    data.frame(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600)), 
+    data.frame(location = "Casey_Station", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
+    data.frame(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348),
+    data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
+    data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871),
+    data.frame(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556),
+    data.frame(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
+    data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) )
+    , cleanup_table() ) |>  fill_values()
+}
 fill_values <- function(x) {
   for (var in c("resolution", "radiusx", "radiusy")) {
     bad <- is.na(x[[var]])
     x[[var]][bad] <- x[[var]][1]  ## better not be NA
   }
-  x$SITE_ID <- sprintf("site_%s", digest::digest(x$location, "murmur32"))
+  x$SITE_ID <- sprintf("site_%s", unlist(lapply(x$location, digest::digest, "murmur32")))
   x
 }
 filter_fun <- function(.x) {

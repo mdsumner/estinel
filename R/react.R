@@ -27,7 +27,8 @@ for (j in 1:length(locations)) {
 
 imagetable <- dplyr::filter(viewtable, location == locations[j])
 SITE_NAME <- imagetable$location[j]
-SITE_ID <- sprintf(SITE_ID_template, j)
+#SITE_ID <- sprintf(SITE_ID_template, j)
+SITE_ID <- imagetable$SITE_ID[1]
 images <- character()
 for (i in 1:nrow(imagetable)) {
 DATE <- format(as.Date(imagetable$solarday[i]))
