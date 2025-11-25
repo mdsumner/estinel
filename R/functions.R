@@ -23,7 +23,7 @@ build_image_dsn <- function(assets, res = 10, resample = "near", rootdir = tempd
     
   }
   out <-   tibble::tibble(outfile = NA_character_, location = assets$location[1], 
-                          SITE_ID = assets$SITE_ID,
+                          SITE_ID = assets$SITE_ID[1],
                           clear_test = assets$clear_test[1], 
                           solarday = assets$solarday[1],
                           scl_tif = assets$scl_tif[1], assets = list(assets))
@@ -83,7 +83,8 @@ build_image_png <- function(x, force = FALSE) {
   # writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
   r <- terra::rast(dsn, raw = TRUE)
 
-  terra::writeRaster(stretch_q(r), outpng, overwrite = TRUE, datatype = "INT1U")
+  terra::writeRaster(stretch_q(r), outpng, 
+                     overwrite = TRUE, datatype = "INT1U", NAflag = NA)
 })
   #gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
   if (inherits(test, "try-error")) return(NA_character_)
@@ -104,7 +105,7 @@ build_locations_table <- function() {
     data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) )
     , cleanup_table() ) |>  fill_values()
 }
-build_thumb <- function(dsn) {
+build_thumb <- function(dsn, force = FALSE) {
   test <- try({
   if (is.na(dsn)) {
     print("bad dsn!!")
@@ -112,7 +113,9 @@ build_thumb <- function(dsn) {
   }
   outfile <- gsub("png$", "png", gsub("estinel/", "estinel/thumbs/", dsn))
   if (gdalraster::vsi_stat(outfile, "exists")) {
-    return(outfile)
+    if (!force) {
+      return(outfile)
+    }
   }
  # r <- terra::rast(dsn)
   ## bug #1973 don't use
@@ -135,7 +138,7 @@ build_thumb <- function(dsn) {
   #Sys.setenv(GDAL_PAM_ENABLED = "NO")
   #test <- try(terra::writeRaster(terra::project(r, r2), outfile, filetype = "PNG"))
   })
-  if (inherits(test, "try-errro")) return(NA_character_)
+  if (inherits(test, "try-error")) return(NA_character_)
   outfile
   
 }
@@ -373,8 +376,8 @@ set_gdal_envs <- function() {
     AWS_VIRTUAL_HOSTING = "NO", 
     GDAL_HTTP_MAX_RETRY = "4",
     #GDAL_DISABLE_READDIR_ON_OPEN = "EMPTY_DIR", 
-    GDAL_HTTP_RETRY_DELAY = "10", 
-    AWS_NO_SIGN_REQUEST = "YES"
+    GDAL_HTTP_RETRY_DELAY = "10"
+    #,AWS_NO_SIGN_REQUEST = "YES"
   )
   
 }
@@ -386,6 +389,18 @@ set_gdal_envs <- function() {
 
 unproj <- function(x, source) {
   reproj::reproj_extent(x, "EPSG:4326", source = source)
+}
+update_react <- function(pagejson, rootdir) {
+  set_gdal_envs()
+
+  con <- new(gdalraster::VSIFile, pagejson , "r")
+  bytes <- con$ingest(-1)
+  con$close()
+  output <- sprintf("%s/catalog/%s", rootdir, pagejson)
+  con1 <- new(gdalraster::VSIFile, output, "w")
+  con1$write(bytes)
+  con1$close()
+  TRUE
 }
 vsicurl_for <- function(x, pc = FALSE) {
   if (pc) {

@@ -34,6 +34,19 @@ tar_assign(
     rootdir <- sprintf("/vsis3/%s", bucket) |> tar_target()
     endpoint <- "https://projects.pawsey.org.au" |> tar_target()
     
+    
+    # 2025-11-18 02:06:44    1661036 sentinel-2-c1-l2a/2018/01/05/Hobart_2018-01-05.tif
+    # 2025-11-18 02:06:44    1574875 sentinel-2-c1-l2a/2018/01/10/Hobart_2018-01-10.tif
+    # 2025-11-18 02:06:45    1827288 sentinel-2-c1-l2a/2018/01/15/Hobart_2018-01-15.tif
+    # 2025-11-21 04:18:28     512442 sentinel-2-c1-l2a/2018/01/20/Hobart_2018-01-20.png
+    # 2025-11-21 04:18:29       1852 sentinel-2-c1-l2a/2018/01/20/Hobart_2018-01-20.png.aux.xml
+    # 2025-11-18 02:06:46    1645541 sentinel-2-c1-l2a/2018/01/20/Hobart_2018-01-20.tif
+    # 2025-11-18 21:41:46       9803 sentinel-2-c1-l2a/2018/01/20/Hobart_2018-01-20_scl.tif
+    # 2025-11-18 02:06:48    1856319 sentinel-2-c1-l2a/2018/01/25/Hobart_2018-01-25.tif
+    # 2025-11-18 02:06:49    1792761 sentinel-2-c1-l2a/2018/01/30/Hobart_2018-01-30.tif
+    # 2025-11-20 00:30:38      14092 thumbs/sentinel-2-c1-l2a/2018/01/20/Hobart_2018-01-20.png
+    # 
+    # 
     ## "sentinel-2-l2a",
     #provider <- #c("https://planetarycomputer.microsoft.com/api/stac/v1/search", 
     provider <- c("https://earth-search.aws.element84.com/v1/search") |> tar_target()
@@ -58,18 +71,21 @@ tar_assign(
     group_table <- images_table |> mutate(scl_tif = scl_tifs[tar_group], clear_test = scl_clear[tar_group]) |> 
       make_group_table_providers(provider, collection) |>
         group_by(location, solarday, collection) |> tar_group() |>
-        tar_target()
-    dsn_table <- build_image_dsn(group_table, rootdir = rootdir)  |> tar_target(iteration = "group")
-    pngs <- build_image_png(dsn_table, force = FALSE) |> tar_target(pattern = map(dsn_table))
-     
-    thumbs <- build_thumb(pngs) |> tar_target(pattern = map(pngs)) 
+        tar_target(iteration = "group")
+    dsn_table <- build_image_dsn(group_table, rootdir = rootdir)  |> tar_target(pattern = map(group_table))
+    pngs <- build_image_png(dsn_table, force = TRUE) |> tar_target(pattern = map(dsn_table))
+#      
+    thumbs <- build_thumb(pngs, force = TRUE) |> tar_target(pattern = map(pngs)) 
     viewtableNA <- mutate(dsn_table, outpng = pngs, thumb = thumbs) |>
       mutate(outfile = gsub("/vsis3", endpoint, outfile),
              outpng = gsub("/vsis3", endpoint, outpng),
-             scl_tif = gsub("/vsis3", endpoint, scl_tif), 
+             scl_tif = gsub("/vsis3", endpoint, scl_tif),
              thumb = gsub("/vsis3", endpoint, thumb)) |> tar_target()
-    viewtable <- viewtableNA |>   dplyr::filter(!is.na(outfile), !is.na(outpng)) |> 
+    viewtable <- viewtableNA |>   dplyr::filter(!is.na(outfile), !is.na(outpng)) |>
       tar_target()
-}
+    json <- write_react_site(viewtable) |> tar_target()
+    web <- update_react(json, rootdir) |> tar_target()
+    
+ }
   )
 
