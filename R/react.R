@@ -1,12 +1,31 @@
-write_react_site <- function(viewtable) {
+write_react_json <- function(viewtable) {
 collection <- "sentinel-2-c1-l2a"
 SITE_ID_template <- "site_%04i"
-
+# {
+#   "url": {
+#     "view": "https://.../image.png",
+#     "view_hist": "https://.../image_hist.png"
+#   },
+#   "thumbnail": {
+#     "view": "https://.../thumbs/image.png",
+#     "view_hist": "https://.../thumbs/image_hist.png"
+#   }
+# }
+url_template <- 
+'"url": {
+           "view_q128": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_q128.png",
+           "view_hist": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_histeq.png",
+           "view_stretch": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_stretch.png"
+         }, 
+        "thumbnail": {
+           "view_q128": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_q128.png",
+           "view_hist": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_histeq.png",
+           "view_stretch": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_stretch.png"
+         }'
 image_template <- 
   '{
           "id": "<<IMAGE_ID>>",
-          "url":       "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>.png",
-          "thumbnail": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>.png",
+                   <<IMAGE_URL>>,
           "download": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>.tif",
           "date": "<<DATE>>"
 }'
@@ -35,7 +54,7 @@ DATE <- format(as.Date(imagetable$solarday[i]))
 SDATE <- format(as.Date(imagetable$solarday[i]), "%Y/%m/%d")
 
 IMAGE_ID <- glue::glue("{collection}/{SDATE}/{SITE_NAME}_{DATE}")
-
+IMAGE_URL <- glue::glue(url_template, .open = "<<", .close = ">>")
 
 
 images <- paste0(c(images, glue::glue(image_template, .open = "<<", .close = ">>")), collapse = ",\n")
@@ -53,4 +72,5 @@ jstext <- sprintf('{
 #writeLines(jstext)
 writeLines(jstext, "image-catalog.json")
 "image-catalog.json"
+#jstext
 }

@@ -1,4 +1,5 @@
-build_image_dsn <- function(assets, res = 10, resample = "near", rootdir = tempdir()) {
+build_image_dsn <- function(assets, resample = "near", rootdir = tempdir()) {
+  res <- assets$resolution[1]
   root <- sprintf("%s/%s", rootdir, assets$collection[1])
   root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
   set_gdal_envs()
@@ -59,7 +60,7 @@ build_image_dsn <- function(assets, res = 10, resample = "near", rootdir = tempd
   out
 }
 
-build_image_png <- function(x, force = FALSE) {
+build_image_png <- function(x, force = FALSE, type) {
   test <- try({
   dsn <- x[["outfile"]]
   if (length(dsn) > 1) {
@@ -69,7 +70,8 @@ build_image_png <- function(x, force = FALSE) {
   set_gdal_envs()
   Sys.unsetenv("AWS_NO_SIGN_REQUEST")
   if (is.na(dsn)) return(NA_character_)
-  outpng <- gsub("tif$", "png", dsn)
+  #gsub("tif$", "png", dsn)
+  outpng <- gsub("\\.tif$", sprintf("_%s.png", type),  dsn)
   if (gdalraster::vsi_stat(outpng, "exists")) {
     if (!force) {
       return(outpng)  ## silently ignore
@@ -82,8 +84,16 @@ build_image_png <- function(x, force = FALSE) {
   }
   # writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
   r <- terra::rast(dsn, raw = TRUE)
-
-  terra::writeRaster(stretch_q(r), outpng, 
+  if (type == "q128") {
+    r <- stretch_q128(r)
+  }
+  if (type == "histeq") {
+    r <- stretch_histeq(r)
+  }
+  if (type == "stretch") {
+    r <- terra::stretch(r)
+  }
+  terra::writeRaster(r, outpng, 
                      overwrite = TRUE, datatype = "INT1U", NAflag = NA)
 })
   #gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
@@ -128,8 +138,9 @@ build_thumb <- function(dsn, force = FALSE) {
   outfile
   
 }
-build_scl_dsn <- function(assets, res = 10, div = NULL, root = tempdir()) {
+build_scl_dsn <- function(assets, div = NULL, root = tempdir()) {
   set_gdal_envs()
+  res <- assets$resolution[1]
   root <- sprintf("%s/%s/%s", root, assets$collection[1L], format(assets$solarday[1L], "%Y/%m/%d"))
   if (!dir.exists(root)) {
     if (!is_cloud(root)) {
@@ -180,11 +191,13 @@ define_locations_table <- function() {
     data.frame(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600)), 
     data.frame(location = "Casey_Station", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
     data.frame(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348),
+    data.frame(location = "Heard_Island_60m", lon = 73.50281, lat= -53.09143, resolution = 60, radiusx = 24000, radiusy=14000),
     data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
     data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871),
     data.frame(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556),
     data.frame(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
-    data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) )
+    data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) ), 
+    data.frame(location = "Dome_C_North", lon = 122.52059, lat = -75.34132)
     , cleanup_table() ) |>  fill_values()
 }
 fill_values <- function(x) {
