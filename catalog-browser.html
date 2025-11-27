@@ -135,6 +135,19 @@
       </svg>
     );
 
+    const Play = () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+      </svg>
+    );
+
+    const Pause = () => (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="6" y="4" width="4" height="16"></rect>
+        <rect x="14" y="4" width="4" height="16"></rect>
+      </svg>
+    );
+
     function SatImageBrowser() {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -157,6 +170,10 @@
       const [ratingFilters, setRatingFilters] = useState(['good', 'ok', 'bad', 'unrated']); // Array of active filters
       const [showFilterDropdown, setShowFilterDropdown] = useState(false);
       const [rateAndNext, setRateAndNext] = useState(false);
+      const [isPlaying, setIsPlaying] = useState(false);
+      const [playSpeed, setPlaySpeed] = useState(1000); // milliseconds between images
+      const [showUrlImport, setShowUrlImport] = useState(false);
+      const [importUrl, setImportUrl] = useState('');
       const [userId] = useState(() => {
         let id = localStorage.getItem('user_id');
         if (!id) {
@@ -196,25 +213,23 @@
         });
       };
 
-      // Find next unrated image
+      // Find next unrated image in the filtered list
       const findNextUnrated = () => {
-        const currentIdx = currentImages.findIndex(img => img.id === currentImage.id);
-        
-        // Search forward from current position
-        for (let i = currentIdx + 1; i < currentImages.length; i++) {
-          if (!getRating(currentImages[i].id)) {
+        // Search forward from current position in filtered list
+        for (let i = currentIndex + 1; i < filteredImages.length; i++) {
+          if (!getRating(filteredImages[i].id)) {
             return i;
           }
         }
         
-        // Wrap around and search from beginning
-        for (let i = 0; i < currentIdx; i++) {
-          if (!getRating(currentImages[i].id)) {
+        // Wrap around and search from beginning of filtered list
+        for (let i = 0; i < currentIndex; i++) {
+          if (!getRating(filteredImages[i].id)) {
             return i;
           }
         }
         
-        // No unrated images found
+        // No unrated images found in filtered list
         return null;
       };
 
@@ -250,6 +265,23 @@
         const allImages = data?.locations.flatMap(loc => loc.images) || [];
         
         allImages.forEach(img => {
+          const rating = getRating(img.id);
+          if (rating) {
+            stats[rating]++;
+          } else {
+            stats.unrated++;
+          }
+        });
+        
+        return stats;
+      };
+
+      // Calculate rating statistics for current location only
+      const getLocationRatingStats = () => {
+        const stats = { good: 0, ok: 0, bad: 0, unrated: 0 };
+        const locationImages = selectedLocation?.images || [];
+        
+        locationImages.forEach(img => {
           const rating = getRating(img.id);
           if (rating) {
             stats[rating]++;
@@ -310,6 +342,31 @@
           }
         };
         reader.readAsText(file);
+      };
+
+      // Import ratings from URL
+      const importRatingsFromUrl = async (url) => {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          
+          const imported = await response.json();
+          const newRatings = {};
+          
+          imported.ratings.forEach(item => {
+            newRatings[item.image_id] = {
+              rating: item.rating,
+              timestamp: item.timestamp
+            };
+          });
+          
+          setRatings(prev => ({ ...prev, ...newRatings }));
+          setShowUrlImport(false);
+          setImportUrl('');
+          alert(`Ratings imported successfully from URL!\nImported ${imported.ratings.length} ratings from user ${imported.user_id}`);
+        } catch (err) {
+          alert('Failed to import ratings from URL: ' + err.message);
+        }
       };
 
       // Clear all ratings
@@ -441,6 +498,17 @@
         return () => document.removeEventListener('mousedown', handleClickOutside);
       }, [showFilterDropdown]);
 
+      // Autoplay functionality
+      useEffect(() => {
+        if (!isPlaying || viewMode !== 'single') return;
+        
+        const interval = setInterval(() => {
+          setCurrentIndex((prev) => (prev + 1) % filteredImages.length);
+        }, playSpeed);
+        
+        return () => clearInterval(interval);
+      }, [isPlaying, playSpeed, filteredImages.length, viewMode]);
+
       useEffect(() => {
         if (selectedLocation && currentImages.length > 0 && initialLoad) {
           setTimeout(() => {
@@ -461,6 +529,10 @@
           if (e.key === 'g' || e.key === 'G') setShowThumbnails(prev => !prev);
           if (e.key === 'c' || e.key === 'C') setShowCrosshair(prev => !prev);
           if (e.key === '?') setShowHelp(prev => !prev);
+          if (e.key === ' ' && viewMode === 'single') {
+            e.preventDefault(); // Prevent page scroll
+            setIsPlaying(prev => !prev);
+          }
           // Quick rating shortcuts
           if (e.key === '1') rateImage(currentImage.id, 'good');
           if (e.key === '2') rateImage(currentImage.id, 'ok');
@@ -468,7 +540,7 @@
         };
         window.addEventListener('keydown', handleKeyPress);
         return () => window.removeEventListener('keydown', handleKeyPress);
-      }, [currentIndex, currentImages.length, currentImage]);
+      }, [currentIndex, currentImages.length, currentImage, viewMode]);
 
       const goToNext = () => {
         if (viewMode === 'single') {
@@ -656,6 +728,29 @@
               
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className={`p-2 rounded ${isPlaying ? 'bg-green-600' : 'bg-gray-700'} hover:bg-green-700`}
+                  title={isPlaying ? "Pause slideshow" : "Play slideshow"}
+                  disabled={viewMode !== 'single'}
+                >
+                  {isPlaying ? <Pause /> : <Play />}
+                </button>
+                {viewMode === 'single' && (
+                  <select
+                    value={playSpeed}
+                    onChange={(e) => setPlaySpeed(Number(e.target.value))}
+                    className="bg-gray-700 text-gray-100 px-2 py-2 rounded border border-gray-600 text-sm"
+                    title="Playback speed"
+                  >
+                    <option value={100}>Very Fast (0.1s)</option>
+                    <option value={300}>Fast (0.3s)</option>
+                    <option value={500}>Medium-Fast (0.5s)</option>
+                    <option value={1000}>Medium (1s)</option>
+                    <option value={2000}>Slow (2s)</option>
+                    <option value={3000}>Very Slow (3s)</option>
+                  </select>
+                )}
+                <button
                   onClick={() => setShowThumbnails(!showThumbnails)}
                   className={`p-2 rounded ${showThumbnails ? 'bg-blue-600' : 'bg-gray-700'} hover:bg-blue-700`}
                   title="Toggle thumbnails (G)"
@@ -750,22 +845,48 @@
                   {/* Statistics */}
                   <div className="flex-1">
                     <h3 className="text-sm font-semibold mb-2 text-gray-300">Rating Statistics</h3>
-                    <div className="grid grid-cols-4 gap-2 text-xs">
-                      <div className="bg-green-600 rounded p-2 text-center">
-                        <div className="font-bold">{stats.good}</div>
-                        <div>Good</div>
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">Current Location: {selectedLocation?.name}</div>
+                        <div className="grid grid-cols-4 gap-2 text-xs">
+                          <div className="bg-green-600 rounded p-2 text-center">
+                            <div className="font-bold">{getLocationRatingStats().good}</div>
+                            <div>Good</div>
+                          </div>
+                          <div className="bg-yellow-600 rounded p-2 text-center">
+                            <div className="font-bold">{getLocationRatingStats().ok}</div>
+                            <div>OK</div>
+                          </div>
+                          <div className="bg-red-600 rounded p-2 text-center">
+                            <div className="font-bold">{getLocationRatingStats().bad}</div>
+                            <div>Bad</div>
+                          </div>
+                          <div className="bg-gray-600 rounded p-2 text-center">
+                            <div className="font-bold">{getLocationRatingStats().unrated}</div>
+                            <div>Unrated</div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="bg-yellow-600 rounded p-2 text-center">
-                        <div className="font-bold">{stats.ok}</div>
-                        <div>OK</div>
-                      </div>
-                      <div className="bg-red-600 rounded p-2 text-center">
-                        <div className="font-bold">{stats.bad}</div>
-                        <div>Bad</div>
-                      </div>
-                      <div className="bg-gray-600 rounded p-2 text-center">
-                        <div className="font-bold">{stats.unrated}</div>
-                        <div>Unrated</div>
+                      <div>
+                        <div className="text-xs text-gray-400 mb-1">All Locations</div>
+                        <div className="grid grid-cols-4 gap-2 text-xs">
+                          <div className="bg-green-600 rounded p-2 text-center">
+                            <div className="font-bold">{stats.good}</div>
+                            <div>Good</div>
+                          </div>
+                          <div className="bg-yellow-600 rounded p-2 text-center">
+                            <div className="font-bold">{stats.ok}</div>
+                            <div>OK</div>
+                          </div>
+                          <div className="bg-red-600 rounded p-2 text-center">
+                            <div className="font-bold">{stats.bad}</div>
+                            <div>Bad</div>
+                          </div>
+                          <div className="bg-gray-600 rounded p-2 text-center">
+                            <div className="font-bold">{stats.unrated}</div>
+                            <div>Unrated</div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -781,7 +902,7 @@
                         <Download /> Export Ratings
                       </button>
                       <label className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm font-semibold cursor-pointer">
-                        <Upload /> Import Ratings
+                        <Upload /> Import from File
                         <input
                           type="file"
                           accept=".json"
@@ -789,6 +910,12 @@
                           className="hidden"
                         />
                       </label>
+                      <button
+                        onClick={() => setShowUrlImport(!showUrlImport)}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm font-semibold"
+                      >
+                        <Upload /> Import from URL
+                      </button>
                       <button
                         onClick={clearAllRatings}
                         className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-semibold"
@@ -800,6 +927,43 @@
                 </div>
                 <div className="mt-3 text-xs text-gray-400">
                   User ID: {userId} | Use keyboard shortcuts: 1=Good, 2=OK, 3=Bad
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* URL Import Dialog */}
+          {showUrlImport && (
+            <div className="bg-gray-800 border-b border-gray-700 p-4">
+              <div className="max-w-4xl mx-auto">
+                <h3 className="text-sm font-semibold mb-2 text-gray-300">Import Ratings from URL</h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={importUrl}
+                    onChange={(e) => setImportUrl(e.target.value)}
+                    placeholder="https://example.com/ratings.json"
+                    className="flex-1 bg-gray-700 text-gray-100 px-3 py-2 rounded border border-gray-600"
+                  />
+                  <button
+                    onClick={() => importRatingsFromUrl(importUrl)}
+                    disabled={!importUrl.trim()}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm font-semibold"
+                  >
+                    Import
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowUrlImport(false);
+                      setImportUrl('');
+                    }}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded text-sm font-semibold"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <div className="mt-2 text-xs text-gray-400">
+                  Example: https://projects.pawsey.org.au/estinel/ratings/community-ratings.json
                 </div>
               </div>
             </div>
@@ -1109,10 +1273,12 @@
                     <h4 className="font-semibold text-blue-400 mb-2">Navigation</h4>
                     <ul className="space-y-1 text-gray-300">
                       <li>• <strong>← →</strong> arrows: Navigate through images</li>
+                      <li>• <strong>Spacebar</strong>: Play/pause slideshow (single view)</li>
                       <li>• <strong>G</strong> key: Toggle thumbnail panel</li>
                       <li>• <strong>C</strong> key: Toggle center crosshair</li>
                       <li>• Click thumbnails to jump to specific images</li>
                       <li>• Use dropdown to switch between locations</li>
+                      <li>• Adjust playback speed with dropdown</li>
                     </ul>
                     <div className="mt-3 text-xs text-gray-400">
                       <p><strong>Tip:</strong> If an image appears too dark, try a different 'view_type' (colour balance option available via the dropdown selector to the right of the location selector)</p>
@@ -1143,11 +1309,12 @@
                       <li>• Use filter to show rated images</li>
                       <li>• <strong>Rate and Next</strong>: Auto-jump to next unrated image</li>
                       <li>• Export ratings to JSON file</li>
-                      <li>• Import ratings from others</li>
+                      <li>• Import ratings from file or URL</li>
                       <li>• Colored dots on thumbnails show ratings</li>
                     </ul>
                     <div className="mt-3 text-xs text-gray-400">
                       <p><strong>Contribute:</strong> Share your ratings as issues at <a href="https://github.com/mdsumner/estinel" target="_blank" className="text-blue-400 hover:underline">github.com/mdsumner/estinel</a></p>
+                      <p className="mt-1"><strong>Community ratings:</strong> Import shared ratings via URL to see others' classifications</p>
                     </div>
                   </div>
                 </div>
@@ -1185,7 +1352,7 @@
 
           {/* Keyboard shortcuts hint */}
           <div className="bg-gray-800 border-t border-gray-700 px-4 py-2 text-xs text-gray-400">
-            Shortcuts: ← → navigate | G thumbnails | C crosshair | ? help | 1-3 quick rate | ★ rating panel
+            Shortcuts: ← → navigate | Spacebar play/pause | G thumbnails | C crosshair | ? help | 1-3 quick rate | ★ rating panel
           </div>
         </div>
       );
