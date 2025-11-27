@@ -115,6 +115,7 @@
       const [showThumbnails, setShowThumbnails] = useState(true);
       const [showHelp, setShowHelp] = useState(false);
       const [showCrosshair, setShowCrosshair] = useState(false);
+      const [viewType, setViewType] = useState(null);
       const thumbnailRefs = React.useRef({});
       const [initialLoad, setInitialLoad] = useState(true);
 
@@ -148,6 +149,39 @@
 
       const currentImages = selectedLocation?.images || [];
       const currentImage = currentImages[currentIndex];
+      
+      // Get available view types from first image
+      const availableViewTypes = currentImage && typeof currentImage.url === 'object' 
+        ? Object.keys(currentImage.url)
+        : ['view'];
+      
+      // Initialize viewType to first available if not set
+      const activeViewType = viewType && availableViewTypes.includes(viewType) 
+        ? viewType 
+        : availableViewTypes[0];
+      
+      // Update viewType if needed
+      React.useEffect(() => {
+        if (!viewType || !availableViewTypes.includes(viewType)) {
+          setViewType(availableViewTypes[0]);
+        }
+      }, [availableViewTypes]);
+      
+      // Helper to get the correct URL for an image based on viewType
+      const getImageUrl = (img) => {
+        if (typeof img.url === 'object') {
+          return img.url[activeViewType] || img.url[availableViewTypes[0]];
+        }
+        return img.url;
+      };
+      
+      // Helper to get thumbnail URL based on viewType
+      const getThumbnailUrl = (img) => {
+        if (typeof img.thumbnail === 'object') {
+          return img.thumbnail[activeViewType] || img.thumbnail[availableViewTypes[0]];
+        }
+        return img.thumbnail;
+      };
 
       // Scroll thumbnail panel to current image
       useEffect(() => {
@@ -189,8 +223,15 @@
         if (viewMode === 'single') {
           setCurrentIndex((prev) => (prev + 1) % currentImages.length);
         } else {
-          // In compare mode, advance the right image
-          setCompareIndices(prev => [prev[0], Math.min(prev[1] + 1, currentImages.length - 1)]);
+          // In compare mode: check if Ctrl is pressed
+          const isCtrl = window.event && window.event.ctrlKey;
+          if (isCtrl) {
+            // Ctrl+Right: move left image forward (stop before right image)
+            setCompareIndices(prev => [Math.min(prev[0] + 1, prev[1] - 1), prev[1]]);
+          } else {
+            // Right: move right image forward
+            setCompareIndices(prev => [prev[0], Math.min(prev[1] + 1, currentImages.length - 1)]);
+          }
         }
       };
 
@@ -198,8 +239,15 @@
         if (viewMode === 'single') {
           setCurrentIndex((prev) => (prev - 1 + currentImages.length) % currentImages.length);
         } else {
-          // In compare mode, go back on the right image
-          setCompareIndices(prev => [prev[0], Math.max(prev[1] - 1, 0)]);
+          // In compare mode: check if Ctrl is pressed
+          const isCtrl = window.event && window.event.ctrlKey;
+          if (isCtrl) {
+            // Ctrl+Left: move right image back (stop after left image)
+            setCompareIndices(prev => [prev[0], Math.max(prev[1] - 1, prev[0] + 1)]);
+          } else {
+            // Left: move left image back
+            setCompareIndices(prev => [Math.max(prev[0] - 1, 0), prev[1]]);
+          }
         }
       };
 
@@ -215,14 +263,35 @@
         if (viewMode === 'single') {
           setCurrentIndex(index);
         } else {
-          if (compareIndices[0] === index) return;
-          setCompareIndices([compareIndices[0], index]);
+          // In compare mode: normal click = left image, ctrl+click = right image
+          if (window.event && window.event.ctrlKey) {
+            setCompareIndices([compareIndices[0], index]);
+          } else {
+            setCompareIndices([index, compareIndices[1]]);
+          }
         }
       };
 
       const toggleCompareMode = () => {
         if (viewMode === 'single') {
-          setCompareIndices([currentIndex, Math.min(currentIndex + 1, currentImages.length - 1)]);
+          // Entering compare mode - choose appropriate pair
+          let leftIdx, rightIdx;
+          
+          if (currentIndex === currentImages.length - 1) {
+            // On last image: select last two
+            leftIdx = Math.max(0, currentImages.length - 2);
+            rightIdx = currentImages.length - 1;
+          } else if (currentIndex <= 1) {
+            // On first or second image: select first two
+            leftIdx = 0;
+            rightIdx = Math.min(1, currentImages.length - 1);
+          } else {
+            // Otherwise: current and next
+            leftIdx = currentIndex;
+            rightIdx = Math.min(currentIndex + 1, currentImages.length - 1);
+          }
+          
+          setCompareIndices([leftIdx, rightIdx]);
           setViewMode('compare');
         } else {
           setCurrentIndex(compareIndices[0]);
@@ -261,6 +330,20 @@
                     </option>
                   ))}
                 </select>
+                
+                {availableViewTypes.length > 1 && (
+                  <select
+                    value={activeViewType}
+                    onChange={(e) => setViewType(e.target.value)}
+                    className="bg-gray-700 text-gray-100 px-3 py-2 rounded border border-gray-600"
+                  >
+                    {availableViewTypes.map(vt => (
+                      <option key={vt} value={vt}>
+                        {vt}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               
               <div className="flex items-center gap-2">
@@ -304,11 +387,10 @@
                 {viewMode === 'single' ? (
                   <div className="relative">
                     <img
-                      src={currentImage.url}
+                      src={getImageUrl(currentImage)}
                       alt={currentImage.id}
                       className="block"
                       style={{ imageRendering: 'pixelated' }}
-                      decoding="sync"
                       loading="eager"
                     />
                     {showCrosshair && (
@@ -357,11 +439,10 @@
                       return (
                         <div key={i} className="relative">
                           <img
-                            src={img.url}
+                            src={getImageUrl(img)}
                             alt={img.id}
                             className="block"
                             style={{ imageRendering: 'pixelated' }}
-                            decoding="sync"
                             loading="eager"
                           />
                           {showCrosshair && (
@@ -465,7 +546,7 @@
                         }`}
                       >
                         <img
-                          src={img.thumbnail}
+                          src={getThumbnailUrl(img)}
                           alt={img.id}
                           className="w-full h-24 object-cover"
                         />
@@ -496,14 +577,20 @@
                       <li>• Click thumbnails to jump to specific images</li>
                       <li>• Use dropdown to switch between locations</li>
                     </ul>
+                    <div className="mt-3 text-xs text-gray-400">
+                      <p><strong>Tip:</strong> If an image appears too dark, try a different 'view_type' (colour balance option available via the dropdown selector to the right of the location selector)</p>
+                    </div>
                   </div>
                   <div>
                     <h4 className="font-semibold text-blue-400 mb-2">Compare Mode</h4>
                     <ul className="space-y-1 text-gray-300">
                       <li>• Click the <strong>columns icon</strong> to enable</li>
-                      <li>• <strong>Left image</strong> = anchor (stays fixed)</li>
-                      <li>• <strong>← →</strong> arrows: Step right image through time</li>
-                      <li>• Click thumbnails to set any arbitrary pair</li>
+                      <li>• <strong>←</strong>: Move left image backward</li>
+                      <li>• <strong>→</strong>: Move right image forward</li>
+                      <li>• <strong>Ctrl+←</strong>: Move right image backward</li>
+                      <li>• <strong>Ctrl+→</strong>: Move left image forward</li>
+                      <li>• <strong>Click</strong> thumbnail: Set left image</li>
+                      <li>• <strong>Ctrl+Click</strong> thumbnail: Set right image</li>
                     </ul>
                   </div>
                   <div>
@@ -511,7 +598,7 @@
                     <div className="text-gray-300 text-xs space-y-1">
                       <p>From the Download TIF address, replace:</p>
                       <ul className="space-y-1 mt-1">
-                        <li>• <code className="bg-gray-900 px-1">.tif</code> → <code className="bg-gray-900 px-1">.png</code> for viewable PNG</li>
+                        <li>• <code className="bg-gray-900 px-1">.tif</code> → <code className="bg-gray-900 px-1">[view_type].png</code> for viewable PNG</li>
                         <li>• <code className="bg-gray-900 px-1">.tif</code> → <code className="bg-gray-900 px-1">_scl.tif</code> for Sentinel categories</li>
                       </ul>
                       <p className="text-[10px] text-gray-400 mt-2">STAC item JSON will be added</p>
