@@ -1,4 +1,8 @@
-<!DOCTYPE html>
+// Slider mode
+                  <div className="relative inline-block" style={{ userSelect: 'none' }}>
+                    {/* Right image (base layer) */}
+                    <img
+                      src={getImageUrl(currentImages[compareIn<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -110,8 +114,9 @@
       const [error, setError] = useState(null);
       const [selectedLocation, setSelectedLocation] = useState(null);
       const [currentIndex, setCurrentIndex] = useState(0);
-      const [viewMode, setViewMode] = useState('single');
+      const [viewMode, setViewMode] = useState('slider');
       const [compareIndices, setCompareIndices] = useState([0, 1]);
+      const [sliderPosition, setSliderPosition] = useState(50);
       const [showThumbnails, setShowThumbnails] = useState(true);
       const [showHelp, setShowHelp] = useState(false);
       const [showCrosshair, setShowCrosshair] = useState(false);
@@ -223,7 +228,7 @@
         if (viewMode === 'single') {
           setCurrentIndex((prev) => (prev + 1) % currentImages.length);
         } else {
-          // In compare mode: check if Ctrl is pressed
+          // In compare/slider mode: check if Ctrl is pressed
           const isCtrl = window.event && window.event.ctrlKey;
           if (isCtrl) {
             // Ctrl+Right: move left image forward (stop before right image)
@@ -239,7 +244,7 @@
         if (viewMode === 'single') {
           setCurrentIndex((prev) => (prev - 1 + currentImages.length) % currentImages.length);
         } else {
-          // In compare mode: check if Ctrl is pressed
+          // In compare/slider mode: check if Ctrl is pressed
           const isCtrl = window.event && window.event.ctrlKey;
           if (isCtrl) {
             // Ctrl+Left: move right image back (stop after left image)
@@ -273,29 +278,31 @@
       };
 
       const toggleCompareMode = () => {
-        if (viewMode === 'single') {
-          // Entering compare mode - choose appropriate pair
+        if (viewMode === 'slider') {
+          // Slider → Side-by-side
+          setViewMode('compare');
+        } else if (viewMode === 'compare') {
+          // Side-by-side → Single
+          setCurrentIndex(compareIndices[0]);
+          setViewMode('single');
+        } else {
+          // Single → Slider
           let leftIdx, rightIdx;
           
           if (currentIndex === currentImages.length - 1) {
-            // On last image: select last two
             leftIdx = Math.max(0, currentImages.length - 2);
             rightIdx = currentImages.length - 1;
           } else if (currentIndex <= 1) {
-            // On first or second image: select first two
             leftIdx = 0;
             rightIdx = Math.min(1, currentImages.length - 1);
           } else {
-            // Otherwise: current and next
             leftIdx = currentIndex;
             rightIdx = Math.min(currentIndex + 1, currentImages.length - 1);
           }
           
           setCompareIndices([leftIdx, rightIdx]);
-          setViewMode('compare');
-        } else {
-          setCurrentIndex(compareIndices[0]);
-          setViewMode('single');
+          setSliderPosition(50);
+          setViewMode('slider');
         }
       };
 
@@ -356,8 +363,8 @@
                 </button>
                 <button
                   onClick={toggleCompareMode}
-                  className={`p-2 rounded ${viewMode === 'compare' ? 'bg-blue-600' : 'bg-gray-700'} hover:bg-blue-700`}
-                  title="Compare mode"
+                  className={`p-2 rounded ${viewMode !== 'single' ? 'bg-blue-600' : 'bg-gray-700'} hover:bg-blue-700`}
+                  title="View mode (cycles: Slider → Side-by-side → Single)"
                 >
                   <Columns2 />
                 </button>
@@ -407,7 +414,6 @@
                       <div className="flex justify-between items-center">
                         <div>
                           <div className="font-mono">{currentImage.id}</div>
-                          <div className="text-gray-400">{currentImage.date}</div>
                         </div>
                         <div className="flex gap-2">
                           {currentImage.download && (
@@ -432,7 +438,7 @@
                       </div>
                     </div>
                   </div>
-                ) : (
+                ) : viewMode === 'compare' ? (
                   <div className="flex gap-4">
                     {compareIndices.map((idx, i) => {
                       const img = currentImages[idx];
@@ -459,7 +465,6 @@
                             <div className="flex justify-between items-center">
                               <div>
                                 <div className="font-mono">{img.id}</div>
-                                <div className="text-gray-400">{img.date}</div>
                               </div>
                               <div className="flex gap-1">
                                 {img.download && (
@@ -487,6 +492,83 @@
                       );
                     })}
                   </div>
+                ) : (
+                  // Slider mode
+                  <div className="relative inline-block">
+                    {/* Right image (base layer) */}
+                    <img
+                      src={getImageUrl(currentImages[compareIndices[1]])}
+                      alt={currentImages[compareIndices[1]].id}
+                      className="block"
+                      style={{ imageRendering: 'pixelated' }}
+                      loading="eager"
+                    />
+                    
+                    {/* Left image (clipped overlay) */}
+                    <img
+                      src={getImageUrl(currentImages[compareIndices[0]])}
+                      alt={currentImages[compareIndices[0]].id}
+                      className="block absolute top-0 left-0 pointer-events-none"
+                      style={{ 
+                        imageRendering: 'pixelated',
+                        clipPath: `inset(0 ${100 - sliderPosition}% 0 0)`
+                      }}
+                      loading="eager"
+                    />
+                    
+                    {/* Slider handle */}
+                    <div 
+                      className="absolute top-0 bottom-0 w-1 bg-white cursor-ew-resize"
+                      style={{ left: `${sliderPosition}%`, transform: 'translateX(-50%)' }}
+                      onMouseDown={(e) => {
+                        const container = e.currentTarget.parentElement;
+                        const handleDrag = (moveEvent) => {
+                          const rect = container.getBoundingClientRect();
+                          const x = moveEvent.clientX - rect.left;
+                          const percent = Math.max(0, Math.min(100, (x / rect.width) * 100));
+                          setSliderPosition(percent);
+                        };
+                        const handleRelease = () => {
+                          document.removeEventListener('mousemove', handleDrag);
+                          document.removeEventListener('mouseup', handleRelease);
+                        };
+                        document.addEventListener('mousemove', handleDrag);
+                        document.addEventListener('mouseup', handleRelease);
+                      }}
+                    >
+                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="15 18 9 12 15 6"></polyline>
+                          <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                      </div>
+                    </div>
+                    
+                    {showCrosshair && (
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                        <svg width="60" height="60" className="absolute">
+                          <line x1="30" y1="0" x2="30" y2="20" stroke="red" strokeWidth="2" />
+                          <line x1="30" y1="40" x2="30" y2="60" stroke="red" strokeWidth="2" />
+                          <line x1="0" y1="30" x2="20" y2="30" stroke="red" strokeWidth="2" />
+                          <line x1="40" y1="30" x2="60" y2="30" stroke="red" strokeWidth="2" />
+                        </svg>
+                      </div>
+                    )}
+                    
+                    {/* Info overlay - slider mode */}
+                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 p-2 text-xs">
+                      <div className="flex gap-4">
+                        <div>
+                          <span className="text-gray-400">Left: </span>
+                          <span className="font-mono">{currentImages[compareIndices[0]].id}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Right: </span>
+                          <span className="font-mono">{currentImages[compareIndices[1]].id}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -504,11 +586,12 @@
                   <div className="text-center">
                     {viewMode === 'single' ? (
                       <div className="text-lg font-mono">
-                        {currentIndex + 1} / {currentImages.length}
+                        {currentIndex + 1} ({currentImage.date})
                       </div>
                     ) : (
                       <div className="text-sm font-mono">
-                        Comparing: {compareIndices[0] + 1} & {compareIndices[1] + 1}
+                        {viewMode === 'slider' ? 'Slider: ' : 'Comparing: '}
+                        {compareIndices[0] + 1} & {compareIndices[1] + 1} ({currentImages[compareIndices[0]].date} / {currentImages[compareIndices[1]].date})
                       </div>
                     )}
                   </div>
@@ -540,7 +623,7 @@
                         className={`cursor-pointer border-2 rounded overflow-hidden transition-all ${
                           viewMode === 'single' && idx === currentIndex
                             ? 'border-blue-500'
-                            : viewMode === 'compare' && compareIndices.includes(idx)
+                            : (viewMode === 'compare' || viewMode === 'slider') && compareIndices.includes(idx)
                             ? 'border-green-500'
                             : 'border-gray-700 hover:border-gray-500'
                         }`}
@@ -582,15 +665,18 @@
                     </div>
                   </div>
                   <div>
-                    <h4 className="font-semibold text-blue-400 mb-2">Compare Mode</h4>
+                    <h4 className="font-semibold text-blue-400 mb-2">View Modes</h4>
                     <ul className="space-y-1 text-gray-300">
-                      <li>• Click the <strong>columns icon</strong> to enable</li>
+                      <li>• Click <strong>columns icon</strong> to cycle modes</li>
+                      <li>• Modes: Slider → Side-by-side → Single</li>
+                      <li>• Default: Slider mode with last 2 images</li>
                       <li>• <strong>←</strong>: Move left image backward</li>
                       <li>• <strong>→</strong>: Move right image forward</li>
                       <li>• <strong>Ctrl+←</strong>: Move right image backward</li>
                       <li>• <strong>Ctrl+→</strong>: Move left image forward</li>
                       <li>• <strong>Click</strong> thumbnail: Set left image</li>
                       <li>• <strong>Ctrl+Click</strong> thumbnail: Set right image</li>
+                      <li>• In slider mode: Drag to reveal images</li>
                     </ul>
                   </div>
                   <div>
