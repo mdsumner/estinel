@@ -78,8 +78,40 @@ collaborative classification efforts.
   rationale for the browser and classification system
 - **[Browser Source](inst/docs/catalog-browser-with-ratings.html)** -
   Single-file HTML application (built with Claude AI)
-- **[Image Catalog](inst/docs/image-catalog.json)** - Current catalog
-  structure
+
+### Catalog Schema
+
+The image catalog uses a JSON format with a hierarchical structure:
+
+``` json
+{
+  "locations": [
+    {
+      "id": "loc_001",
+      "name": "Site Name - Description",
+      "images": [
+        {
+          "id": "unique_image_id",
+          "url": "path/to/image.png",
+          "date": "YYYY-MM-DD",
+          "thumbnail": "path/to/thumbnail.png",
+          "download": "path/to/original.tif",
+          "stac-item": "path/to/stac-metadata.json"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Field descriptions:** - `locations[]` - Array of geographic sites
+being monitored - `id` - Unique identifier for location or image -
+`name` - Human-readable location name - `url` - Can be a string (single
+view) or object with multiple view types (e.g.,
+`{"true_color": "...", "false_color": "..."}`) - `date` - ISO 8601 date
+string for the image acquisition - `thumbnail` - Low-resolution preview
+image - `download` - Link to original GeoTIFF data - `stac-item` -
+SpatioTemporal Asset Catalog metadata (optional)
 
 ## Project Status
 
