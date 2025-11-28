@@ -154,7 +154,7 @@
       const [error, setError] = useState(null);
       const [selectedLocation, setSelectedLocation] = useState(null);
       const [currentIndex, setCurrentIndex] = useState(0);
-      const [viewMode, setViewMode] = useState('slider');
+      const [viewMode, setViewMode] = useState('single');
       const [compareIndices, setCompareIndices] = useState([0, 1]);
       const [sliderPosition, setSliderPosition] = useState(50);
       const [showThumbnails, setShowThumbnails] = useState(true);
@@ -174,6 +174,7 @@
       const [playSpeed, setPlaySpeed] = useState(1000); // milliseconds between images
       const [showUrlImport, setShowUrlImport] = useState(false);
       const [importUrl, setImportUrl] = useState('');
+      const [locationSort, setLocationSort] = useState('recent'); // 'recent' or 'alphabetical'
       const [userId] = useState(() => {
         let id = localStorage.getItem('user_id');
         if (!id) {
@@ -402,6 +403,27 @@
         }
       };
 
+      // Get sorted locations
+      const getSortedLocations = () => {
+        if (!data) return [];
+        
+        const locations = [...data.locations];
+        
+        if (locationSort === 'recent') {
+          // Sort by most recent (maximum) date in each location
+          locations.sort((a, b) => {
+            const maxDateA = Math.max(...a.images.map(img => new Date(img.date).getTime()));
+            const maxDateB = Math.max(...b.images.map(img => new Date(img.date).getTime()));
+            return maxDateB - maxDateA; // Most recent first
+          });
+        } else {
+          // Sort alphabetically
+          locations.sort((a, b) => a.name.localeCompare(b.name));
+        }
+        
+        return locations;
+      };
+
       // Load catalog on mount
       useEffect(() => {
         fetch(CATALOG_URL)
@@ -439,6 +461,20 @@
           }
         }
       }, [ratingFilters, filteredImages.length, viewMode]);
+
+      // Update selected location when sort order changes
+      useEffect(() => {
+        if (data && data.locations.length > 0) {
+          const sorted = getSortedLocations();
+          // If current selection is not set or we want to default to first in sorted order
+          if (!selectedLocation) {
+            const firstLocation = sorted[0];
+            setSelectedLocation(firstLocation);
+            setCurrentIndex(firstLocation.images.length - 1);
+            setCompareIndices([firstLocation.images.length - 2, firstLocation.images.length - 1]);
+          }
+        }
+      }, [locationSort, data]);
       
       // Get current image - use filteredImages for single mode, currentImages for compare modes
       const currentImage = viewMode === 'single' 
@@ -640,16 +676,30 @@
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <h1 className="text-xl font-bold">Satellite Image Browser</h1>
+                
+                <button
+                  onClick={() => setLocationSort(prev => prev === 'recent' ? 'alphabetical' : 'recent')}
+                  className="bg-gray-700 text-gray-100 px-3 py-2 rounded border border-gray-600 hover:bg-gray-600 text-sm"
+                  title={`Currently sorted by: ${locationSort === 'recent' ? 'Most Recent' : 'Alphabetical'}`}
+                >
+                  Sort: {locationSort === 'recent' ? '📅 Recent' : '🔤 A-Z'}
+                </button>
+                
                 <select
-                  value={selectedLocation.id}
-                  onChange={(e) => handleLocationChange(data.locations.find(l => l.id === e.target.value))}
+                  value={selectedLocation?.id || ''}
+                  onChange={(e) => handleLocationChange(getSortedLocations().find(l => l.id === e.target.value))}
                   className="bg-gray-700 text-gray-100 px-3 py-2 rounded border border-gray-600"
                 >
-                  {data.locations.map(loc => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.name} ({loc.images.length} images)
-                    </option>
-                  ))}
+                  {getSortedLocations().map(loc => {
+                    const maxDate = loc.images.length > 0 
+                      ? new Date(Math.max(...loc.images.map(img => new Date(img.date).getTime()))).toISOString().split('T')[0]
+                      : 'N/A';
+                    return (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name} ({loc.images.length} images{locationSort === 'recent' ? `, latest: ${maxDate}` : ''})
+                      </option>
+                    );
+                  })}
                 </select>
                 
                 {availableViewTypes.length > 1 && (
