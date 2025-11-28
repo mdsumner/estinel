@@ -7,23 +7,30 @@
 
 <!-- badges: end -->
 
-The goal of estinel is to …
+The goal of estinel is to process Sentinel 2 imagery in a systematic way
+targeting specific locations of interest. This is a project of the
+Integrated Digital East Antarctica program at the [Australian Antarctic
+Division](https://www.antarctica.gov.au/).
 
-## Installation
+This creates a catalog of imagery with the original red, green, blue
+bands and “view” types of those stretched with different options. All of
+the details of the workflow are recorded and traceable using the
+{targets} package.
 
-You can install the development version of estinel from
-[GitHub](https://github.com/) with:
+A browser for the imagery is available at
+<https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html>
 
-``` r
-# install.packages("devtools")
-devtools::install_github("mdsumner/estinel")
-```
+A design document for the browser is kept here:
 
-## Example
+<https://github.com/mdsumner/estinel/blob/main/inst/docs/design-rationale.md>
 
-This is a basic example which shows you how to solve a common problem:
+There is an R package here but it’s not used that way for now.
+Development is continuing for a better underlying map index for this
+catalog.
 
-``` r
-#library(estinel)
-## basic example code
-```
+## Code of Conduct
+
+Please note that the estinel project is released with a [Contributor
+Code of
+Conduct](https://contributor-covenant.org/version/2/1/CODE_OF_CONDUCT.html).
+By contributing to this project, you agree to abide by its terms.
