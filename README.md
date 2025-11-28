@@ -7,26 +7,94 @@
 
 <!-- badges: end -->
 
-The goal of estinel is to process Sentinel 2 imagery in a systematic way
-targeting specific locations of interest. This is a project of the
+**Systematic Sentinel-2 imagery processing and collaborative image
+classification for Antarctic research**
+
+The goal of estinel is to process Sentinel-2 imagery in a systematic
+way, targeting specific locations of interest. This is a project of the
 Integrated Digital East Antarctica program at the [Australian Antarctic
 Division](https://www.antarctica.gov.au/).
 
-This creates a catalog of imagery with the original red, green, blue
-bands and “view” types of those stretched with different options. All of
-the details of the workflow are recorded and traceable using the
-{targets} package.
+## Overview
 
-A browser for the imagery is available at
-<https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html>
+estinel creates a catalog of Sentinel-2 imagery with:
 
-A design document for the browser is kept here:
+- Original red, green, blue bands
+- Multiple “view types” with different color balance stretches
+- Complete workflow traceability using the `{targets}` package
+- Interactive browser for visualization and classification
+- Collaborative rating system for image quality assessment
 
-<https://github.com/mdsumner/estinel/blob/main/inst/docs/design-rationale.md>
+**Data Pipeline:** - Sentinel-2 imagery queried from
+[element84.com](https://element84.com) - Processed with GDAL and the R
+`{targets}` package - Hosted on the [Pawsey Supercomputing Research
+Centre](https://pawsey.org.au/)
 
-There is an R package here but it’s not used that way for now.
-Development is continuing for a better underlying map index for this
-catalog.
+## Interactive Browser
+
+**Try it now:** [Catalog
+Browser](https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html)
+
+The browser provides:
+
+- **Multiple view modes** - Single image, slider comparison, and
+  side-by-side viewing
+- **Rating system** - Classify images as Good/OK/Bad with keyboard
+  shortcuts (1/2/3)
+- **Collaborative workflow** - Export/import ratings as JSON for team
+  review
+- **Smart filtering** - Multi-select filters to view specific rating
+  categories
+- **Playback mode** - Automated slideshow with adjustable speed (0.1s to
+  3s)
+- **Location sorting** - View locations by most recent imagery or
+  alphabetically
+- **Rate and Next** - Auto-advance to next unrated image for rapid
+  classification
+
+### Quick Start
+
+1.  Open the
+    [browser](https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html)
+2.  Press `?` to see keyboard shortcuts
+3.  Use `1/2/3` to rate images (Good/OK/Bad)
+4.  Enable “Rate and Next” for rapid classification
+5.  Export your ratings and contribute them as issues to this repository
+
+### Contributing Ratings
+
+After rating images: 1. Click the ⭐ star button to open the rating
+panel 2. Click “Export Ratings” to download your classifications as JSON
+3. Share your ratings by [opening an
+issue](https://github.com/mdsumner/estinel/issues) on this repository
+
+Community ratings can be aggregated and shared via URL import for
+collaborative classification efforts.
+
+## Documentation
+
+- **[Design Rationale](inst/docs/design-rationale.md)** - Comprehensive
+  documentation of design decisions, alternatives considered, and
+  rationale for the browser and classification system
+- **[Browser Source](inst/docs/catalog-browser-with-ratings.html)** -
+  Single-file HTML application (built with Claude AI)
+- **[Image Catalog](inst/docs/image-catalog.json)** - Current catalog
+  structure
+
+## Project Status
+
+This is an active research project. The R package structure provides
+organization, but the primary workflow currently uses `{targets}` for
+pipeline orchestration. Development continues for a better underlying
+map index for the catalog.
+
+## Installation
+
+``` r
+# Not yet on CRAN
+# Install development version from GitHub:
+# remotes::install_github("mdsumner/estinel")
+```
 
 ## Code of Conduct
 
@@ -34,3 +102,8 @@ Please note that the estinel project is released with a [Contributor
 Code of
 Conduct](https://contributor-covenant.org/version/2/1/CODE_OF_CONDUCT.html).
 By contributing to this project, you agree to abide by its terms.
+
+------------------------------------------------------------------------
+
+*This tool was built collaboratively with Claude AI as part of the
+estinel project.*
