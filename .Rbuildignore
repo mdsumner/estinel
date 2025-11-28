@@ -10,3 +10,5 @@
 ^gallery$
 ^README\.Rmd$
 ^CODE_OF_CONDUCT\.md$
+^inst/docs/catalog-browser.html$
+^inst/docs/image-catalog.json$
