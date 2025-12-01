@@ -462,19 +462,19 @@
         }
       }, [ratingFilters, filteredImages.length, viewMode]);
 
-      // Update selected location when sort order changes
+      // Set selected location based on sort order
       useEffect(() => {
-        if (data && data.locations.length > 0) {
+        if (data && data.locations.length > 0 && !selectedLocation) {
           const sorted = getSortedLocations();
-          // If current selection is not set or we want to default to first in sorted order
-          if (!selectedLocation) {
-            const firstLocation = sorted[0];
-            setSelectedLocation(firstLocation);
-            setCurrentIndex(firstLocation.images.length - 1);
-            setCompareIndices([firstLocation.images.length - 2, firstLocation.images.length - 1]);
-          }
+          const firstLocation = sorted[0];
+          setSelectedLocation(firstLocation);
+          setCurrentIndex(firstLocation.images.length - 1);
+          setCompareIndices([
+            Math.max(0, firstLocation.images.length - 2), 
+            firstLocation.images.length - 1
+          ]);
         }
-      }, [locationSort, data]);
+      }, [data, locationSort]);
       
       // Get current image - use filteredImages for single mode, currentImages for compare modes
       const currentImage = viewMode === 'single' 
