@@ -442,10 +442,7 @@
           .catch(err => {
             console.warn('Could not load catalog, using sample data:', err.message);
             setData(SAMPLE_DATA);
-            const firstLocation = SAMPLE_DATA.locations[0];
-            setSelectedLocation(firstLocation);
-            setCurrentIndex(firstLocation.images.length - 1);
-            setCompareIndices([firstLocation.images.length - 2, firstLocation.images.length - 1]);
+
             setLoading(false);
           });
       }, []);
@@ -455,26 +452,32 @@
       
       // Reset currentIndex when filters change to stay within bounds
       useEffect(() => {
-        if (viewMode === 'single' && filteredImages.length > 0) {
+  
+        if (viewMode === 'single' && filteredImages.length > 0 && selectedLocation) {
           if (currentIndex >= filteredImages.length) {
+            console.log('BOUNDS CHECK: Resetting currentIndex from', currentIndex, 'to', filteredImages.length - 1); 
             setCurrentIndex(Math.max(0, filteredImages.length - 1));
           }
         }
-      }, [ratingFilters, filteredImages.length, viewMode]);
+      }, [ratingFilters, filteredImages.length, viewMode, selectedLocation]);
 
-      // Set selected location based on sort order
+      // Set initial location when data loads
       useEffect(() => {
+  
         if (data && data.locations.length > 0 && !selectedLocation) {
           const sorted = getSortedLocations();
           const firstLocation = sorted[0];
           setSelectedLocation(firstLocation);
-          setCurrentIndex(firstLocation.images.length - 1);
+          const lastImageIndex = firstLocation.images.length - 1;
+          console.log('Setting currentIndex to:', lastImageIndex);  // ← ADD THIS LINE
+          
+          setCurrentIndex(lastImageIndex);
           setCompareIndices([
-            Math.max(0, firstLocation.images.length - 2), 
-            firstLocation.images.length - 1
+            Math.max(0, lastImageIndex - 1), 
+            lastImageIndex
           ]);
         }
-      }, [data, locationSort]);
+      }, [data]);  // Only depend on data, not locationSort
       
       // Get current image - use filteredImages for single mode, currentImages for compare modes
       const currentImage = viewMode === 'single' 
@@ -539,6 +542,7 @@
         if (!isPlaying || viewMode !== 'single') return;
         
         const interval = setInterval(() => {
+          
           setCurrentIndex((prev) => (prev + 1) % filteredImages.length);
         }, playSpeed);
         
@@ -605,6 +609,8 @@
       };
 
       const handleLocationChange = (location) => {
+        console.log('handleLocationChange called for:', location.name);  // ← ADD THIS
+        
         setSelectedLocation(location);
         setCurrentIndex(location.images.length - 1);
         setCompareIndices([location.images.length - 2, location.images.length - 1]);
@@ -666,6 +672,7 @@
       }
 
       if (!data || !selectedLocation) return null;
+      console.log('Rendering with currentIndex:', currentIndex, 'filteredImages.length:', filteredImages.length);  // ← ADD THIS
 
       const stats = getRatingStats();
 
