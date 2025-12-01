@@ -432,18 +432,13 @@
             return response.json();
           })
           .then(catalog => {
-            setData(catalog);
-            const firstLocation = catalog.locations[0];
-            setSelectedLocation(firstLocation);
-            setCurrentIndex(firstLocation.images.length - 1);
-            setCompareIndices([firstLocation.images.length - 2, firstLocation.images.length - 1]);
-            setLoading(false);
+        setData(catalog);
+        setLoading(false);
           })
           .catch(err => {
-            console.warn('Could not load catalog, using sample data:', err.message);
-            setData(SAMPLE_DATA);
-
-            setLoading(false);
+        console.warn('Could not load catalog, using sample data:', err.message);
+        setData(SAMPLE_DATA);
+        setLoading(false);
           });
       }, []);
 
