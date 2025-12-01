@@ -190,8 +190,15 @@ define_locations_table <- function() {
     data.frame(location = "Dawson_Lampton_Ice_Tongue", lon  = -26.760, lat = -76.071),
     data.frame(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600)), 
     data.frame(location = "Casey_Station", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
+    data.frame(location = "Casey_Station_2", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), radiusx = 5000, radiusy = 5000), 
     data.frame(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348),
+    data.frame(location = "Heard_Island_Atlas_Cove_2", lon = 73.38681, lat = -53.024348, radiusx = 5000, radiusy = 5000),
     data.frame(location = "Heard_Island_60m", lon = 73.50281, lat= -53.09143, resolution = 60, radiusx = 24000, radiusy=14000),
+    data.frame(location = "Heard_Island_Big_Ben", lon = 73.516667, lat = -53.1), 
+    data.frame(location = "Heard_Island_Spit_Bay", lon = 73.71887, lat = -53.1141),
+    data.frame(location = "Heard_Island_Spit_Bay_2", lon = 73.71887, lat = -53.1141, radiusx = 5000, radiusy = 5000),
+    data.frame(location = "Heard_Island_Compton_Lagoon", lon = 73.610672, lat = -53.058079),
+    
     data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
     data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871),
     data.frame(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556),
@@ -410,7 +417,7 @@ update_react <- function(pagejson, rootdir) {
   con <- new(gdalraster::VSIFile, pagejson , "r")
   bytes <- con$ingest(-1)
   con$close()
-  output <- sprintf("%s/catalog/%s", rootdir, pagejson)
+  output <- sprintf("%s/catalog/%s", rootdir, basename(pagejson))
   con1 <- new(gdalraster::VSIFile, output, "w")
   con1$write(bytes)
   con1$close()

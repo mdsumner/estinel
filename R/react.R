@@ -70,7 +70,8 @@ jstext <- sprintf('{
 ]
         }', sites)
 #writeLines(jstext)
-writeLines(jstext, "image-catalog.json")
-"image-catalog.json"
-#jstext
+outfile <- "inst/docs/image-catalog.json"
+writeLines(jstext, outfile)
+outfile
+
 }
