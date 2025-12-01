@@ -1313,33 +1313,33 @@
             )}
           </div>
 
-          {/* Help panel */}
+                    {/* Help panel */}
           {showHelp && (
             <div className="bg-gray-800 border-t border-gray-700 p-4">
               <div className="max-w-4xl mx-auto">
                 <h3 className="text-lg font-bold mb-3">How to Use</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                   <div>
-                    <h4 className="font-semibold text-blue-400 mb-2">Navigation</h4>
+                    <h4 className="font-semibold text-blue-400 mb-2">🧭 Navigation</h4>
                     <ul className="space-y-1 text-gray-300">
                       <li>• <strong>← →</strong> arrows: Navigate through images</li>
                       <li>• <strong>Spacebar</strong>: Play/pause slideshow (single view)</li>
                       <li>• <strong>G</strong> key: Toggle thumbnail panel</li>
-                      <li>• <strong>C</strong> key: Toggle center crosshair</li>
+                      <li>• <strong>C</strong> key: Toggle centre crosshair</li>
                       <li>• Click thumbnails to jump to specific images</li>
                       <li>• Use dropdown to switch between locations</li>
                       <li>• Adjust playback speed with dropdown</li>
                     </ul>
-                    <div className="mt-3 text-xs text-gray-400">
+                    <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-400">
                       <p><strong>Tip:</strong> If an image appears too dark, try a different 'view_type' (colour balance option available via the dropdown selector to the right of the location selector)</p>
                     </div>
                   </div>
                   <div>
-                    <h4 className="font-semibold text-blue-400 mb-2">View Modes</h4>
+                    <h4 className="font-semibold text-blue-400 mb-2">👁️ View Modes</h4>
                     <ul className="space-y-1 text-gray-300">
                       <li>• Click <strong>columns icon</strong> to cycle modes</li>
                       <li>• Modes: Slider → Side-by-side → Single</li>
-                      <li>• Default: Slider mode with last 2 images</li>
+                      <li>• Default: Single mode</li>
                       <li>• <strong>←</strong>: Move left image backward</li>
                       <li>• <strong>→</strong>: Move right image forward</li>
                       <li>• <strong>Ctrl+←</strong>: Move right image backward</li>
@@ -1350,7 +1350,7 @@
                     </ul>
                   </div>
                   <div>
-                    <h4 className="font-semibold text-yellow-400 mb-2">Rating System</h4>
+                    <h4 className="font-semibold text-yellow-400 mb-2">⭐ Rating System</h4>
                     <ul className="space-y-1 text-gray-300">
                       <li>• <strong>1</strong>: Rate as Good</li>
                       <li>• <strong>2</strong>: Rate as OK</li>
@@ -1360,9 +1360,9 @@
                       <li>• <strong>Rate and Next</strong>: Auto-jump to next unrated image</li>
                       <li>• Export ratings to JSON file</li>
                       <li>• Import ratings from file or URL</li>
-                      <li>• Colored dots on thumbnails show ratings</li>
+                      <li>• Coloured dots on thumbnails show ratings</li>
                     </ul>
-                    <div className="mt-3 text-xs text-gray-400">
+                    <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-400">
                       <p><strong>Contribute:</strong> Share your ratings as issues at <a href="https://github.com/mdsumner/estinel" target="_blank" className="text-blue-400 hover:underline">github.com/mdsumner/estinel</a></p>
                       <p className="mt-1"><strong>Community ratings:</strong> Import shared ratings via URL to see others' classifications</p>
                     </div>
@@ -1370,7 +1370,7 @@
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mt-4 pt-4 border-t border-gray-700">
                   <div>
-                    <h4 className="font-semibold text-blue-400 mb-2">Files Available</h4>
+                    <h4 className="font-semibold text-blue-400 mb-2">📁 Files Available</h4>
                     <div className="text-gray-300 text-xs space-y-1">
                       <p>From the Download TIF address, replace:</p>
                       <ul className="space-y-1 mt-1">
@@ -1381,14 +1381,21 @@
                     </div>
                   </div>
                   <div>
-                    <h4 className="font-semibold text-blue-400 mb-2">Read TIF in R</h4>
-                    <div className="text-gray-300 text-xs space-y-1">
-                      <p>Right-click "Download TIF" → Copy link address, then:</p>
-                      <code className="block bg-gray-900 p-2 rounded mt-1 font-mono">
+                    <h4 className="font-semibold text-blue-400 mb-2">📊 Read TIF in R</h4>
+                    <div className="text-gray-300 text-sm space-y-2">
+                      <p className="text-xs">Right-click "Download TIF" → Copy link address, then:</p>
+                      <code className="block bg-gray-900 p-2 rounded mt-1 font-mono text-xs">
                         r &lt;- terra::rast("/vsicurl/[copied-address]")<br/>
                         terra::plotRGB(r, stretch = TRUE)
                       </code>
-                      <p className="text-[10px] text-gray-400 mt-1">Colour stretch options: 1) 'view_stretch' corresponds to "terra::stretch()" or "plotRGB(, stretch=TRUE)" 2) 'view_histeq' corresponds to 'terra::stretch(, hiseq = TRUE, scale = 255)' 3) 'view_q128' uses a method defined in estinel function 'stretch_q128()' </p>
+                      <details className="mt-2">
+                        <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300">
+                          <strong>Advanced:</strong> Colour stretch methods ▼
+                        </summary>
+                        <p className="text-xs text-gray-400 mt-2 pl-4">
+                          Colour stretch options: 1) 'view_stretch' corresponds to "terra::stretch()" or "plotRGB(, stretch=TRUE)" 2) 'view_histeq' corresponds to 'terra::stretch(, histeq = TRUE, scale = 255)' 3) 'view_q128' uses a method defined in estinel function 'stretch_q128()'
+                        </p>
+                      </details>
                     </div>
                   </div>
                 </div>
