@@ -9,6 +9,14 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.min.js"></script>
+  <script>
+    // Register all UTM zone definitions for proj4js
+    for (var zone = 1; zone <= 60; zone++) {
+      var zoneStr = zone.toString().padStart(2, '0');
+      proj4.defs('EPSG:326' + zoneStr, '+proj=utm +zone=' + zone + ' +datum=WGS84 +units=m +no_defs');
+      proj4.defs('EPSG:327' + zoneStr, '+proj=utm +zone=' + zone + ' +south +datum=WGS84 +units=m +no_defs');
+    }
+  </script>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; }
   </style>
