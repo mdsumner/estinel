@@ -185,6 +185,8 @@
       const [importUrl, setImportUrl] = useState('');
       const [externalLinks, setExternalLinks] = useState(null);
       const [locationSort, setLocationSort] = useState('recent'); // 'recent' or 'alphabetical'
+      const [purposeFilters, setPurposeFilters] = useState([]); // Empty = show all
+      const [showPurposeDropdown, setShowPurposeDropdown] = useState(false);
       const [userId] = useState(() => {
         let id = localStorage.getItem('user_id');
         if (!id) {
@@ -470,17 +472,46 @@
         const toTime = `${date}T23:59:59.999Z`;
         
         return {
-          esa: `https://browser.dataspace.copernicus.eu/?zoom=12&lat=${lat}&lng=${lon}&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}&datasetId=S2_L2A_CDAS&cloudCoverage=30&dateMode=SINGLE`,
+          esa: `https://browser.dataspace.copernicus.eu/?zoom=12&lat=${lat}&lng=${lon}&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}&datasetId=S2_L2A_CDAS&cloudCoverage=30&dateMode=SINGLE&layerId=2_TONEMAPPED_NATURAL_COLOR`,
           maxar: `https://xpress.maxar.com/?lat=${lat}&lon=${lon}&zoom=10`,
           gmap: `https://www.google.com/maps/@${lat},${lon},30000m/data=!3m1!1e3`
         };
+      };
+
+      // Get all unique purposes from catalog
+      const getAllPurposes = () => {
+        if (!data) return [];
+        const purposes = new Set();
+        data.locations.forEach(loc => {
+          if (loc.purpose) {
+            // Purpose can be string or array
+            const locPurposes = Array.isArray(loc.purpose) ? loc.purpose : [loc.purpose];
+            locPurposes.forEach(p => purposes.add(p));
+          } else {
+            purposes.add('(undefined)');
+          }
+        });
+        return Array.from(purposes).sort();
+      };
+      
+      // Check if location matches purpose filters
+      const locationMatchesPurpose = (location) => {
+        if (purposeFilters.length === 0) return true; // No filter = show all
+        
+        const locPurposes = location.purpose 
+          ? (Array.isArray(location.purpose) ? location.purpose : [location.purpose])
+          : ['(undefined)'];
+        
+        // Location matches if any of its purposes are in the filter
+        return locPurposes.some(p => purposeFilters.includes(p));
       };
 
       // Get sorted locations
       const getSortedLocations = () => {
         if (!data) return [];
         
-        const locations = [...data.locations];
+        // First filter by purpose
+        let locations = data.locations.filter(locationMatchesPurpose);
         
         if (locationSort === 'recent') {
           // Sort by most recent (maximum) date in each location
@@ -495,6 +526,17 @@
         }
         
         return locations;
+      };
+      
+      // Toggle a purpose filter
+      const togglePurposeFilter = (purpose) => {
+        setPurposeFilters(prev => {
+          if (prev.includes(purpose)) {
+            return prev.filter(p => p !== purpose);
+          } else {
+            return [...prev, purpose];
+          }
+        });
       };
 
       // Load catalog on mount
@@ -621,17 +663,20 @@
         fetchMetadata();
       }, [currentImage]);
 
-      // Close filter dropdown when clicking outside
+      // Close dropdowns when clicking outside
       useEffect(() => {
         const handleClickOutside = (e) => {
           if (showFilterDropdown && !e.target.closest('.filter-dropdown-container')) {
             setShowFilterDropdown(false);
           }
+          if (showPurposeDropdown && !e.target.closest('.purpose-dropdown-container')) {
+            setShowPurposeDropdown(false);
+          }
         };
         
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-      }, [showFilterDropdown]);
+      }, [showFilterDropdown, showPurposeDropdown]);
 
       // Autoplay functionality
       useEffect(() => {
@@ -787,6 +832,50 @@
                 >
                   Sort: {locationSort === 'recent' ? '📅 Recent' : '🔤 A-Z'}
                 </button>
+                
+                {getAllPurposes().length > 1 && (
+                  <div className="relative purpose-dropdown-container">
+                    <button
+                      onClick={() => setShowPurposeDropdown(!showPurposeDropdown)}
+                      className="bg-gray-700 text-gray-100 px-3 py-2 rounded border border-gray-600 hover:bg-gray-600 text-sm"
+                      title="Filter locations by purpose"
+                    >
+                      Purpose {purposeFilters.length > 0 ? `(${purposeFilters.length})` : '(all)'}
+                    </button>
+                    
+                    {showPurposeDropdown && (
+                      <div className="absolute top-full mt-1 left-0 bg-gray-700 border border-gray-600 rounded shadow-lg z-50 min-w-[200px]">
+                        <div className="p-2 space-y-1">
+                          <div 
+                            className="text-xs text-gray-400 px-2 py-1 cursor-pointer hover:text-gray-200"
+                            onClick={() => setPurposeFilters([])}
+                          >
+                            Clear filters (show all)
+                          </div>
+                          {getAllPurposes().map(purpose => (
+                            <label key={purpose} className="flex items-center gap-2 hover:bg-gray-600 p-2 rounded cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={purposeFilters.includes(purpose)}
+                                onChange={() => togglePurposeFilter(purpose)}
+                                className="w-4 h-4"
+                              />
+                              <span className="text-sm">{purpose}</span>
+                              <span className="text-xs text-gray-400 ml-auto">
+                                ({data.locations.filter(loc => {
+                                  const locPurposes = loc.purpose 
+                                    ? (Array.isArray(loc.purpose) ? loc.purpose : [loc.purpose])
+                                    : ['(undefined)'];
+                                  return locPurposes.includes(purpose);
+                                }).length})
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <select
                   value={selectedLocation?.id || ''}
