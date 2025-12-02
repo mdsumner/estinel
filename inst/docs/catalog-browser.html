@@ -184,6 +184,9 @@
       const [showUrlImport, setShowUrlImport] = useState(false);
       const [importUrl, setImportUrl] = useState('');
       const [externalLinks, setExternalLinks] = useState(null);
+      const [imageCoords, setImageCoords] = useState(null);
+      const [showCoordPopup, setShowCoordPopup] = useState(false);
+      const [copyFeedback, setCopyFeedback] = useState(null);
       const [locationSort, setLocationSort] = useState('recent'); // 'recent' or 'alphabetical'
       const [purposeFilters, setPurposeFilters] = useState([]); // Empty = show all
       const [showPurposeDropdown, setShowPurposeDropdown] = useState(false);
@@ -466,6 +469,27 @@
         };
       };
       
+      // Calculate bbox from geotransform
+      const getBbox = (geoTransform, width = 1830, height = 1830) => {
+        const [originX, pixelWidth, , originY, , pixelHeight] = geoTransform;
+        const xmin = originX;
+        const xmax = originX + width * pixelWidth;
+        const ymax = originY;  // originY is top-left, pixelHeight is negative
+        const ymin = originY + height * pixelHeight;
+        return { xmin, ymin, xmax, ymax };
+      };
+      
+      // Copy text to clipboard with feedback
+      const copyToClipboard = async (text, label) => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopyFeedback(label);
+          setTimeout(() => setCopyFeedback(null), 1500);
+        } catch (err) {
+          console.error('Failed to copy:', err);
+        }
+      };
+      
       // Generate external webmap links
       const generateExternalLinks = (lat, lon, date) => {
         const fromTime = `${date}T00:00:00.000Z`;
@@ -640,6 +664,7 @@
       useEffect(() => {
         if (!currentImage) {
           setExternalLinks(null);
+          setImageCoords(null);
           return;
         }
         
@@ -652,11 +677,19 @@
           
           if (metadata) {
             const centre = getImageCentre(metadata.geoTransform);
+            const bbox = getBbox(metadata.geoTransform);
             const latLon = utmToLatLon(centre.x, centre.y, metadata.epsg);
             const links = generateExternalLinks(latLon.lat, latLon.lon, currentImage.date);
             setExternalLinks(links);
+            setImageCoords({
+              epsg: metadata.epsg,
+              centre: { x: centre.x, y: centre.y },
+              centreLatLon: { lon: latLon.lon, lat: latLon.lat },
+              bbox: bbox
+            });
           } else {
             setExternalLinks(null);
+            setImageCoords(null);
           }
         };
         
@@ -672,11 +705,14 @@
           if (showPurposeDropdown && !e.target.closest('.purpose-dropdown-container')) {
             setShowPurposeDropdown(false);
           }
+          if (showCoordPopup && !e.target.closest('.relative')) {
+            setShowCoordPopup(false);
+          }
         };
         
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-      }, [showFilterDropdown, showPurposeDropdown]);
+      }, [showFilterDropdown, showPurposeDropdown, showCoordPopup]);
 
       // Autoplay functionality
       useEffect(() => {
@@ -1296,6 +1332,108 @@
                                 GMap
                               </a>
                             </>
+                          )}
+                          {imageCoords && (
+                            <div className="relative">
+                              <button
+                                onClick={() => setShowCoordPopup(!showCoordPopup)}
+                                className="px-3 py-1 bg-cyan-600 hover:bg-cyan-700 rounded text-xs font-semibold"
+                                title="View and copy coordinates"
+                              >
+                                📍 Coords
+                              </button>
+                              
+                              {showCoordPopup && (
+                                <div className="absolute bottom-full mb-2 right-0 bg-gray-800 border border-gray-600 rounded shadow-lg p-3 min-w-[320px] z-50">
+                                  <div className="text-xs space-y-2">
+                                    <div className="font-semibold text-gray-300 border-b border-gray-600 pb-1 mb-2">
+                                      Image Coordinates
+                                      {copyFeedback && <span className="ml-2 text-green-400">✓ Copied {copyFeedback}</span>}
+                                    </div>
+                                    
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-gray-400">CRS:</span>
+                                      <span 
+                                        className="font-mono cursor-pointer hover:text-cyan-400"
+                                        onClick={() => copyToClipboard('EPSG:' + imageCoords.epsg, 'CRS')}
+                                        title="Click to copy"
+                                      >
+                                        EPSG:{imageCoords.epsg}
+                                      </span>
+                                    </div>
+                                    
+                                    <div className="border-t border-gray-700 pt-2">
+                                      <div className="text-gray-400 mb-1">Centre (projected):</div>
+                                      <div className="flex gap-2">
+                                        <span 
+                                          className="font-mono text-[11px] cursor-pointer hover:text-cyan-400 bg-gray-900 px-1 rounded"
+                                          onClick={() => copyToClipboard(imageCoords.centre.x.toFixed(2) + ', ' + imageCoords.centre.y.toFixed(2), 'XY')}
+                                          title="Click to copy X, Y"
+                                        >
+                                          {imageCoords.centre.x.toFixed(2)}, {imageCoords.centre.y.toFixed(2)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="border-t border-gray-700 pt-2">
+                                      <div className="text-gray-400 mb-1">Centre (lat/lon):</div>
+                                      <div className="flex gap-2">
+                                        <span 
+                                          className="font-mono text-[11px] cursor-pointer hover:text-cyan-400 bg-gray-900 px-1 rounded"
+                                          onClick={() => copyToClipboard(imageCoords.centreLatLon.lon.toFixed(6) + ', ' + imageCoords.centreLatLon.lat.toFixed(6), 'Lon/Lat')}
+                                          title="Click to copy Lon, Lat"
+                                        >
+                                          {imageCoords.centreLatLon.lon.toFixed(6)}, {imageCoords.centreLatLon.lat.toFixed(6)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="border-t border-gray-700 pt-2">
+                                      <div className="text-gray-400 mb-1">Bbox (projected):</div>
+                                      <div 
+                                        className="font-mono text-[10px] cursor-pointer hover:text-cyan-400 bg-gray-900 px-1 rounded"
+                                        onClick={() => copyToClipboard(
+                                          '[' + imageCoords.bbox.xmin.toFixed(2) + ', ' + imageCoords.bbox.ymin.toFixed(2) + ', ' + imageCoords.bbox.xmax.toFixed(2) + ', ' + imageCoords.bbox.ymax.toFixed(2) + ']',
+                                          'Bbox'
+                                        )}
+                                        title="Click to copy [xmin, ymin, xmax, ymax]"
+                                      >
+                                        [{imageCoords.bbox.xmin.toFixed(2)}, {imageCoords.bbox.ymin.toFixed(2)}, {imageCoords.bbox.xmax.toFixed(2)}, {imageCoords.bbox.ymax.toFixed(2)}]
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="border-t border-gray-700 pt-2">
+                                      <div className="text-gray-400 mb-1">Extent (xmin,xmax,ymin,ymax):</div>
+                                      <div 
+                                        className="font-mono text-[10px] cursor-pointer hover:text-cyan-400 bg-gray-900 px-1 rounded"
+                                        onClick={() => copyToClipboard(
+                                          '[' + imageCoords.bbox.xmin.toFixed(2) + ', ' + imageCoords.bbox.xmax.toFixed(2) + ', ' + imageCoords.bbox.ymin.toFixed(2) + ', ' + imageCoords.bbox.ymax.toFixed(2) + ']',
+                                          'Extent'
+                                        )}
+                                        title="Click to copy [xmin, xmax, ymin, ymax]"
+                                      >
+                                        [{imageCoords.bbox.xmin.toFixed(2)}, {imageCoords.bbox.xmax.toFixed(2)}, {imageCoords.bbox.ymin.toFixed(2)}, {imageCoords.bbox.ymax.toFixed(2)}]
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="border-t border-gray-700 pt-2">
+                                      <button
+                                        onClick={() => copyToClipboard(JSON.stringify({
+                                          crs: 'EPSG:' + imageCoords.epsg,
+                                          centre_xy: [imageCoords.centre.x, imageCoords.centre.y],
+                                          centre_lonlat: [imageCoords.centreLatLon.lon, imageCoords.centreLatLon.lat],
+                                          bbox_xy: [imageCoords.bbox.xmin, imageCoords.bbox.ymin, imageCoords.bbox.xmax, imageCoords.bbox.ymax],
+                                          extent_xy: [imageCoords.bbox.xmin, imageCoords.bbox.xmax, imageCoords.bbox.ymin, imageCoords.bbox.ymax]
+                                        }, null, 2), 'JSON')}
+                                        className="w-full px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-[11px]"
+                                      >
+                                        Copy all as JSON
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
