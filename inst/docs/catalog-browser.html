@@ -8,6 +8,7 @@
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.min.js"></script>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; }
   </style>
@@ -174,6 +175,7 @@
       const [playSpeed, setPlaySpeed] = useState(1000); // milliseconds between images
       const [showUrlImport, setShowUrlImport] = useState(false);
       const [importUrl, setImportUrl] = useState('');
+      const [externalLinks, setExternalLinks] = useState(null);
       const [locationSort, setLocationSort] = useState('recent'); // 'recent' or 'alphabetical'
       const [userId] = useState(() => {
         let id = localStorage.getItem('user_id');
@@ -403,6 +405,69 @@
         }
       };
 
+      // Parse PAM .aux.xml metadata to get geotransform and EPSG code
+      const parseAuxXml = async (imageUrl) => {
+        try {
+          const baseUrl = typeof imageUrl === 'string' ? imageUrl : Object.values(imageUrl)[0];
+          const auxUrl = baseUrl + '.aux.xml';
+          
+          const response = await fetch(auxUrl);
+          if (!response.ok) return null;
+          
+          const xmlText = await response.text();
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+          
+          const geoTransformEl = xmlDoc.querySelector('GeoTransform');
+          if (!geoTransformEl) return null;
+          
+          const gt = geoTransformEl.textContent.split(',').map(s => parseFloat(s.trim()));
+          
+          const srsEl = xmlDoc.querySelector('SRS');
+          if (!srsEl) return null;
+          
+          const wkt = srsEl.textContent;
+          const epsgMatches = wkt.match(/AUTHORITY\["EPSG","(\d+)"\]/g);
+          if (!epsgMatches || epsgMatches.length === 0) return null;
+          
+          // Get the last EPSG code (the projection), not earlier ones (units, datum)
+          const lastMatch = epsgMatches[epsgMatches.length - 1];
+          const epsgNum = lastMatch.match(/(\d+)/);
+          
+          return { geoTransform: gt, epsg: parseInt(epsgNum[1]) };
+        } catch (err) {
+          console.warn('Could not fetch aux.xml:', err);
+          return null;
+        }
+      };
+      
+      // Convert coordinates to lat/lon using proj4js
+      const utmToLatLon = (x, y, epsg) => {
+        const [lon, lat] = proj4(`EPSG:${epsg}`, 'EPSG:4326', [x, y]);
+        return { lat, lon };
+      };
+      
+      // Calculate image centre from geotransform
+      const getImageCentre = (geoTransform, width = 1830, height = 1830) => {
+        const [originX, pixelWidth, , originY, , pixelHeight] = geoTransform;
+        return { 
+          x: originX + (width / 2) * pixelWidth,
+          y: originY + (height / 2) * pixelHeight 
+        };
+      };
+      
+      // Generate external webmap links
+      const generateExternalLinks = (lat, lon, date) => {
+        const fromTime = `${date}T00:00:00.000Z`;
+        const toTime = `${date}T23:59:59.999Z`;
+        
+        return {
+          esa: `https://browser.dataspace.copernicus.eu/?zoom=12&lat=${lat}&lng=${lon}&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}&datasetId=S2_L2A_CDAS&cloudCoverage=30&dateMode=SINGLE`,
+          maxar: `https://xpress.maxar.com/?lat=${lat}&lon=${lon}&zoom=10`,
+          gmap: `https://www.google.com/maps/@${lat},${lon},30000m/data=!3m1!1e3`
+        };
+      };
+
       // Get sorted locations
       const getSortedLocations = () => {
         if (!data) return [];
@@ -432,13 +497,18 @@
             return response.json();
           })
           .then(catalog => {
-        setData(catalog);
-        setLoading(false);
+            setData(catalog);
+            const firstLocation = catalog.locations[0];
+            setSelectedLocation(firstLocation);
+            setCurrentIndex(firstLocation.images.length - 1);
+            setCompareIndices([firstLocation.images.length - 2, firstLocation.images.length - 1]);
+            setLoading(false);
           })
           .catch(err => {
-        console.warn('Could not load catalog, using sample data:', err.message);
-        setData(SAMPLE_DATA);
-        setLoading(false);
+            console.warn('Could not load catalog, using sample data:', err.message);
+            setData(SAMPLE_DATA);
+
+            setLoading(false);
           });
       }, []);
 
@@ -519,6 +589,33 @@
           }
         }
       }, [currentIndex, currentImage]);
+
+      // Fetch image metadata and generate external links when current image changes
+      useEffect(() => {
+        if (!currentImage) {
+          setExternalLinks(null);
+          return;
+        }
+        
+        const fetchMetadata = async () => {
+          const imageUrl = typeof currentImage.url === 'object' 
+            ? Object.values(currentImage.url)[0] 
+            : currentImage.url;
+          
+          const metadata = await parseAuxXml(imageUrl);
+          
+          if (metadata) {
+            const centre = getImageCentre(metadata.geoTransform);
+            const latLon = utmToLatLon(centre.x, centre.y, metadata.epsg);
+            const links = generateExternalLinks(latLon.lat, latLon.lon, currentImage.date);
+            setExternalLinks(links);
+          } else {
+            setExternalLinks(null);
+          }
+        };
+        
+        fetchMetadata();
+      }, [currentImage]);
 
       // Close filter dropdown when clicking outside
       useEffect(() => {
@@ -1076,6 +1173,37 @@
                               Download STAC
                             </a>
                           )}
+                          {externalLinks && (
+                            <>
+                              <a
+                                href={externalLinks.esa}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1 bg-purple-600 hover:bg-purple-700 rounded text-xs font-semibold"
+                                title="Open in ESA Copernicus Browser"
+                              >
+                                ESA
+                              </a>
+                              <a
+                                href={externalLinks.maxar}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1 bg-orange-600 hover:bg-orange-700 rounded text-xs font-semibold"
+                                title="Open in Maxar Xpress"
+                              >
+                                Maxar
+                              </a>
+                              <a
+                                href={externalLinks.gmap}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-xs font-semibold"
+                                title="Open in Google Maps"
+                              >
+                                GMap
+                              </a>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1380,6 +1508,7 @@
                         <li>• <code className="bg-gray-900 px-1">.tif</code> → <code className="bg-gray-900 px-1">_scl.tif</code> for Sentinel categories</li>
                       </ul>
                       <p className="text-[10px] text-gray-400 mt-2">STAC item JSON will be added</p>
+                      <p className="text-[10px] text-gray-400 mt-1"><strong>External links:</strong> ESA (Copernicus Browser with date), Maxar, Google Maps</p>
                     </div>
                   </div>
                   <div>
