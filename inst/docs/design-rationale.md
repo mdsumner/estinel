@@ -184,7 +184,39 @@ When sort order changes, first location in new order is auto-selected
 
 ---
 
-## 6. Playback System
+## 6. Purpose Filter
+
+### Decision: Optional Purpose-Based Location Filtering
+
+### Purpose Values:
+- **Undefined:** Location has no purpose field
+- **"none":** Explicitly unclassified
+- **Custom strings:** e.g., "sea-ice", "colony-monitoring", "glacier"
+- **Arrays:** Multiple purposes per location
+
+### UI Behavior:
+- Purpose dropdown appears only if catalog has multiple purposes
+- Empty filter = show all locations
+- Multi-select checkboxes for filtering
+- Shows count of locations per purpose
+- Auto-switches location if current is filtered out
+
+### Rationale:
+Enables experimental classification of locations:
+- **Flexible taxonomy** - purposes can evolve as understanding grows
+- **Non-breaking** - omitting purpose maintains backward compatibility
+- **Multi-purpose support** - locations can serve multiple needs
+- **Discovery** - users can explore locations by purpose
+
+### Design Choice: Filter-Based (Not Hard Categories):
+- **Rationale:** Purposes are experimental and may change
+- Filtering allows users to focus without losing access
+- Locations remain accessible by disabling filters
+- Supports gradual taxonomy development
+
+---
+
+## 7. Playback System
 
 ### Decision: Automated Slideshow with Speed Control
 
@@ -415,7 +447,42 @@ Currently supports simple string URLs or object with named views
 
 ---
 
-## 13. Help System
+## 13. External Webmap Links
+
+### Decision: Automatic Links to External Map Services
+
+### Services Linked:
+- **ESA Copernicus Browser** (purple button) - Includes date filter for same-day imagery
+- **Maxar Xpress** (orange button) - High-resolution commercial imagery
+- **Google Maps** (red button) - Satellite view for context
+
+### Implementation:
+1. Fetches `.aux.xml` PAM metadata alongside each image
+2. Extracts geotransform and EPSG code from metadata
+3. Converts UTM coordinates to lat/lon using proj4js
+4. Generates links with appropriate zoom levels and parameters
+
+### Rationale:
+Cross-referencing with other imagery sources:
+- **Verification** - Compare with other data sources
+- **Context** - See higher resolution or different dates
+- **Discovery** - Find related imagery in other catalogs
+
+### Technical Details:
+- Proj4js loaded with all UTM zone definitions (EPSG:326xx, 327xx)
+- Parses last EPSG authority from WKT (projection, not units)
+- Links only appear if metadata is successfully fetched
+- Opens in new tab with `target="_blank"`
+
+### Design Choice: Automatic (Not Manual Configuration):
+- **Rationale:** Coordinates are already in the metadata
+- No user input required
+- Works for any UTM-projected imagery
+- Future: Could extend to other projections
+
+---
+
+## 14. Help System
 
 ### Decision: Comprehensive In-App Documentation
 
@@ -501,6 +568,7 @@ Press `?` to show/hide
     {
       "id": "loc_001",
       "name": "Site A - Forest",
+      "purpose": "sea-ice",
       "images": [
         {
           "id": "loc_001_img_001",
@@ -515,6 +583,15 @@ Press `?` to show/hide
   ]
 }
 ```
+
+**Purpose Field:**
+The optional `purpose` field enables filtering locations by classification:
+- **Omitted:** Location appears with "(undefined)" in purpose filter
+- **String:** Single purpose, e.g., `"purpose": "sea-ice"`
+- **Array:** Multiple purposes, e.g., `"purpose": ["colony", "glacier"]`
+- **"none":** Explicitly unclassified
+
+This allows experimental classification of locations until a clear taxonomy emerges.
 
 **Rationale:**
 - Human-readable
@@ -571,6 +648,7 @@ Based on design decisions and user feedback potential:
 3. **Bulk operations** - Rate multiple images at once
 4. **Keyboard shortcuts customization** - User-defined key bindings
 5. **Export filtered subset** - Export only currently visible images
+6. **SHIFT-H view type cycling** - Keyboard shortcut for view type selection
 
 ### Medium-term Enhancements:
 1. **Advanced filtering** - Date ranges, cloud cover, season
@@ -632,7 +710,7 @@ As expert users provide feedback on real classification workflows, the system ca
 
 ---
 
-**Document Version:** 1.0  
-**Date:** November 29, 2024  
+**Document Version:** 1.1  
+**Date:** December 2, 2024  
 **Author:** Designed collaboratively with Claude AI  
 **Project:** https://github.com/mdsumner/estinel
