@@ -2,7 +2,7 @@ build_image_dsn <- function(assets, resample = "near", rootdir = tempdir()) {
   res <- assets$resolution[1]
   root <- sprintf("%s/%s", rootdir, assets$collection[1])
   root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
-  set_gdal_envs()
+  set_gdal_s3_config()
   location <- assets$location[1L]
   outfile <- sprintf("%s/%s_%s.tif", root, location, format(assets$solarday[1]))
   
@@ -23,16 +23,16 @@ build_image_dsn <- function(assets, resample = "near", rootdir = tempdir()) {
     bandnames <- c("B04", "B03", "B02")
     
   }
-  out <-   tibble::tibble(outfile = NA_character_, location = assets$location[1], 
-                          SITE_ID = assets$SITE_ID[1],
-                          clear_test = assets$clear_test[1], 
-                          solarday = assets$solarday[1],
-                          scl_tif = assets$scl_tif[1], assets = list(assets))
-  
-  if (gdalraster::vsi_stat(outfile, "exists")) {
-    out$outfile <- outfile
-    return(out)  ## silently ignore
-  }
+  # out <-   tibble::tibble(outfile = NA_character_, location = assets$location[1], 
+  #                         SITE_ID = assets$SITE_ID[1],
+  #                         clear_test = assets$clear_test[1], 
+  #                         solarday = assets$solarday[1],
+  #                         scl_tif = assets$scl_tif[1], assets = list(assets))
+  # 
+  # if (gdalraster::vsi_stat(outfile, "exists")) {
+  #   out$outfile <- outfile
+  #   return(out)  ## silently ignore
+  # }
   #print(out$solarday)
   #print(out$location)
   ## didn't like use of gdalraster::srs_to_wkt here ??
@@ -40,43 +40,46 @@ build_image_dsn <- function(assets, resample = "near", rootdir = tempdir()) {
     
     dsns <- assets[[bandnames[i]]]
     dsns <- dsns[!is.na(dsns)]
-    if (length(dsns) < 1) return(out)
+    #if (length(dsns) < 1) return(out)
     
     for (ii in seq_along(dsns)) dsns[ii] <- vsicurl_for(dsns[ii], pc = grepl("windows.net", dsns[ii]))
     tst <- try(warp_to_dsn(dsns, target_crs = crs, target_res = res, target_ext = ex, resample = resample)[[1]], silent = TRUE)
-    if (inherits(tst, "try-error")) return(out)
+    #if (inherits(tst, "try-error")) return(out)
     bands[[i]] <- tst
   }
   
   vrt <- try(vapour::buildvrt(unlist(bands)), silent = TRUE)
-  if (inherits(vrt, "try-error")) return(out)
+  #if (inherits(vrt, "try-error")) return(out)
 
   test <- put_bytes_at(vrt, outfile)
   if (inherits(test, "try-error")) {
-    print("put bytes at fail")
-    return(out)
+    stop("put bytes at fail")
+    
+    #return(out)
   }
-  out$outfile <- outfile
-  out
+  #out$outfile <- outfile
+  marker <- create_s3_marker(outfile)
+  
+  # Double-check we got a valid ETag
+  info <- read_s3_marker(marker)
+  if (is.na(info$etag) || nchar(info$etag) == 0) {
+    stop("S3 write verification failed for: ", vsis3_uri)
+  }
+  marker
 }
 
-build_image_png <- function(x, force = FALSE, type) {
-  test <- try({
-  dsn <- x[["outfile"]]
-  if (length(dsn) > 1) {
-    print("bad")
-    print(dsn)
-  }
-  set_gdal_envs()
+build_image_png <- function(x, type) {
+  dsn <- x
+  set_gdal_s3_config()
   Sys.unsetenv("AWS_NO_SIGN_REQUEST")
-  if (is.na(dsn)) return(NA_character_)
-  #gsub("tif$", "png", dsn)
+  if (is.na(dsn)) stop("bad dsn input to build_image_png")
+ 
   outpng <- gsub("\\.tif$", sprintf("_%s.png", type),  dsn)
-  if (gdalraster::vsi_stat(outpng, "exists")) {
-    if (!force) {
-      return(outpng)  ## silently ignore
-    }
-  }
+  # if (gdalraster::vsi_stat(outpng, "exists")) {
+  #   if (!force) {
+  #     return(outpng)  ## silently ignore
+  #   }
+  # }
   if (!fs::dir_exists(dirname(outpng))) {
     if (!is_cloud(outpng))  {
       fs::dir_create(dirname(outpng))
@@ -95,31 +98,20 @@ build_image_png <- function(x, force = FALSE, type) {
   }
   terra::writeRaster(r, outpng, 
                      overwrite = TRUE, datatype = "INT1U", NAflag = NA)
-})
+
   #gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
-  if (inherits(test, "try-error")) return(NA_character_)
-  outpng
+  #if (inherits(test, "try-error")) return(NA_character_)
+  create_s3_marker(outpng)
 }
 
-build_thumb <- function(dsn, force = FALSE) {
-  test <- try({
+build_thumb <- function(dsn) {
+  set_gdal_s3_config()
   if (is.na(dsn)) {
-    print("bad dsn!!")
-    return(NA_character_)
+    stop("bad dsn NA in build_thumb")
   }
   outfile <- gsub("png$", "png", gsub("estinel/", "estinel/thumbs/", dsn))
-  if (gdalraster::vsi_stat(outfile, "exists")) {
-    if (!force) {
-      return(outfile)
-    }
-  }
- # r <- terra::rast(dsn)
-  ## bug #1973 don't use
-  ##r2 <- terra::resample(r, terra::res(r) * 10)
-  #r2 <- terra::rast(r * 1)
-  #terra::res(r2) <- terra::res(r) * 8
   Sys.setenv(GDAL_PAM_ENABLED = "NO")
-  on.exit(Sys.setenv(GDAL_PAM_ENABLED = "YES"), add = TRUE)
+
   trans <- gdalraster::translate(dsn, tf <- tempfile(fileext = ".png", tmpdir = "/vsimem"), cl_arg = c("-outsize", "12.5%", "12.5%"))
   con <- new(gdalraster::VSIFile, tf, "r")
   bytes <- con$ingest(-1)
@@ -128,18 +120,14 @@ build_thumb <- function(dsn, force = FALSE) {
   con1 <- new(gdalraster::VSIFile, outfile, "w")
   con1$write(bytes)
   con1$close()
-  #rm(bytes); gc()
-  #invisible(NULL)
-  
-  #Sys.setenv(GDAL_PAM_ENABLED = "NO")
-  #test <- try(terra::writeRaster(terra::project(r, r2), outfile, filetype = "PNG"))
-  })
-  if (inherits(test, "try-error")) return(NA_character_)
-  outfile
+  create_s3_marker(outfile)
   
 }
 build_scl_dsn <- function(assets, div = NULL, root = tempdir()) {
-  set_gdal_envs()
+  #set_gdal_envs()
+  print("in build_scl_dsn")
+  print(assets$red)
+  set_gdal_s3_config()
   res <- assets$resolution[1]
   root <- sprintf("%s/%s/%s", root, assets$collection[1L], format(assets$solarday[1L], "%Y/%m/%d"))
   if (!dir.exists(root)) {
@@ -150,61 +138,67 @@ build_scl_dsn <- function(assets, div = NULL, root = tempdir()) {
   location <- assets$location[1L]
   outfile <- sprintf("%s/%s_%s_scl.tif", root, location, format(assets$solarday[1]))
   
-  if (gdalraster::vsi_stat(outfile, "exists")) {
-    return(outfile)  ## silently ignore
-  }
-  exnames <- c("xmin", "xmax", "ymin", "ymax")
-  ## every group of rows has a single extent
-  ex <- unlist(assets[1L, exnames], use.names = FALSE)
-  # if (!is.null(div))  {
-  #   dxdy <- diff(ex)[c(1, 3)]/div / 2
-  #   middle <- c(mean(ex[1:2]), mean(ex[3:4]))
-  #   ex <- c(middle[1] - dxdy[1], middle[1] + dxdy[1], middle[2] - dxdy[2], middle[2] + dxdy[2])
+  # if (gdalraster::vsi_stat(outfile, "exists")) {
+  #   return(outfile)  ## silently ignore
   # }
+  exnames <- c("xmin", "xmax", "ymin", "ymax")
+  ex <- unlist(assets[1L, exnames], use.names = FALSE)
+
   scl <- assets[["scl"]] 
   if (is.na(scl)[1]) scl <- assets[["SCL"]]
   
   for (i in seq_along(scl)) scl[i] <- vsicurl_for(scl[i], pc = grepl("windows.net", scl[i]))
+  out <- vapour::gdal_raster_dsn(scl, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = outfile)
+  marker <- create_s3_marker(outfile)
   
-  out <- try(vapour::gdal_raster_dsn(scl, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = outfile)[[1]], silent = TRUE)
-  if (inherits(out, "try-error")) NA_character_ else out
+  # Double-check we got a valid ETag
+  info <- read_s3_marker(marker)
+  if (is.na(info$etag) || nchar(info$etag) == 0) {
+    stop("S3 write verification failed for: ", outfile)
+  }
+  marker
 }
 
 cleanup_table <- function() {
   x <- readxl::read_excel("Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
     dplyr::rename(location = colony, lon = long) |> dplyr::select(-date)
+  x <- dplyr::filter(x, !grepl("Pointe", location))
+  
+  x2 <- readxl::read_excel("Emperor colonies_2022.xlsx") |> dplyr::transmute(location = Colony, lon = Long, lat = Lat)
+  keep <- which(!gsub("_", " ", x$location) %in% x2$location)
+  x <- rbind(x2, x[keep, ])
   stp <- unlist(gregexpr("[\\[\\(]", x$location)) -1
   stp[stp < 0] <- nchar(x$location[stp < 0])
   x$location <- substr(x$location, 1, stp)
   x$location <- trimws(x$location)
   x$location <- gsub("\\s+", "_", x$location, perl = TRUE)
   x$location <- gsub("é", "e", x$location)
-  
+  x$purpose <- "Emperor"
   x
 }
 define_locations_table <- function() {
   dplyr::bind_rows(
     ## first row is special, we include resolution and radiusx/y these are copied throughout if NA
     ## but other rows may have this value set also
-    data.frame(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy=3000), 
-    data.frame(location = "Dawson_Lampton_Ice_Tongue", lon  = -26.760, lat = -76.071),
-    data.frame(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600)), 
-    data.frame(location = "Casey_Station", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
-    data.frame(location = "Casey_Station_2", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), radiusx = 5000, radiusy = 5000), 
-    data.frame(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348),
-    data.frame(location = "Heard_Island_Atlas_Cove_2", lon = 73.38681, lat = -53.024348, radiusx = 5000, radiusy = 5000),
-    data.frame(location = "Heard_Island_60m", lon = 73.50281, lat= -53.09143, resolution = 60, radiusx = 24000, radiusy=14000),
-    data.frame(location = "Heard_Island_Big_Ben", lon = 73.516667, lat = -53.1), 
-    data.frame(location = "Heard_Island_Spit_Bay", lon = 73.71887, lat = -53.1141),
-    data.frame(location = "Heard_Island_Spit_Bay_2", lon = 73.71887, lat = -53.1141, radiusx = 5000, radiusy = 5000),
-    data.frame(location = "Heard_Island_Compton_Lagoon", lon = 73.610672, lat = -53.058079),
+    data.frame(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy=3000, purpose = "none"), 
+    #data.frame(location = "Dawson_Lampton_Ice_Tongue", lon  = -26.760, lat = -76.071),
+    data.frame(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600), purpose = "base"), 
+    data.frame(location = "Casey_Station", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), purpose = "base"), 
+    data.frame(location = "Casey_Station_2", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), purpose = "Heard", radiusx = 5000, radiusy = 5000), 
+    data.frame(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348, purpose = "Heard"),
+    data.frame(location = "Heard_Island_Atlas_Cove_2", lon = 73.38681, lat = -53.024348, radiusx = 5000, radiusy = 5000, purpose = "Heard"),
+    data.frame(location = "Heard_Island_60m", lon = 73.50281, lat= -53.09143, resolution = 60, radiusx = 24000, radiusy=14000, purpose = "Heard"),
+    data.frame(location = "Heard_Island_Big_Ben", lon = 73.516667, lat = -53.1, purpose = "Heard"), 
+    data.frame(location = "Heard_Island_Spit_Bay", lon = 73.71887, lat = -53.1141, purpose = "Heard"),
+    data.frame(location = "Heard_Island_Spit_Bay_2", lon = 73.71887, lat = -53.1141, radiusx = 5000, radiusy = 5000, purpose = "Heard"),
+    data.frame(location = "Heard_Island_Compton_Lagoon", lon = 73.610672, lat = -53.058079,purpose = "Heard"),
     
-    data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
-    data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871),
-    data.frame(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556),
-    data.frame(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
-    data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) ), 
-    data.frame(location = "Dome_C_North", lon = 122.52059, lat = -75.34132)
+    data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600), purpose = "base"),
+    data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871, purpose = "base"),
+    data.frame(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = "Macquarie"),
+    data.frame(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353, purpose = "none"), 
+    data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600), purpose = "none"), 
+    data.frame(location = "Dome_C_North", lon = 122.52059, lat = -75.34132, purpose = "base")
     , cleanup_table() ) |>  fill_values()
 }
 fill_values <- function(x) {
@@ -212,6 +206,7 @@ fill_values <- function(x) {
     bad <- is.na(x[[var]])
     x[[var]][bad] <- x[[var]][1]  ## better not be NA
   }
+  x[["purpose"]][is.na(x[["purpose"]])] <- "none"
   x$SITE_ID <- sprintf("site_%s", unlist(lapply(x$location, digest::digest, "murmur32")))
   x
 }
@@ -344,6 +339,7 @@ process_stac_table2 <- function(table) {
   #hrefs$centroid_lon <- centroid_lon
   #hrefs$centroid_lat <- centroid_lat
   hrefs$solarday <- as.Date(round(hrefs$datetime - (centroid_lon/15 * 3600), "days"))
+  hrefs$asset_time <- round(hrefs$datetime)
   # hrefs$location <- table$location
   # hrefs$xmin <- table$xmin
   # hrefs$xmax <- table$xmax
@@ -385,23 +381,23 @@ read_dsn <- function(x) {
   gdalraster::read_ds(ds)
 }
 
-set_gdal_envs <- function() {
-  endpoint <- "https://projects.pawsey.org.au"
-  # ## key/secret for GDAL and paws-r, REGION for paws-r, endpoint, vsil, virtual for GDAl
-  Sys.setenv(
-    AWS_ACCESS_KEY_ID = Sys.getenv("PAWSEY_AWS_ACCESS_KEY_ID"),
-    AWS_SECRET_ACCESS_KEY = Sys.getenv("PAWSEY_AWS_SECRET_ACCESS_KEY"),
-    AWS_REGION = "",
-    AWS_S3_ENDPOINT = endpoint,
-    CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE = "YES",
-    AWS_VIRTUAL_HOSTING = "NO", 
-    GDAL_HTTP_MAX_RETRY = "4",
-    #GDAL_DISABLE_READDIR_ON_OPEN = "EMPTY_DIR", 
-    GDAL_HTTP_RETRY_DELAY = "10"
-    #,AWS_NO_SIGN_REQUEST = "YES"
-  )
-  
-}
+# set_gdal_envs <- function() {
+#   endpoint <- "https://projects.pawsey.org.au"
+#   # ## key/secret for GDAL and paws-r, REGION for paws-r, endpoint, vsil, virtual for GDAl
+#   Sys.setenv(
+#     AWS_ACCESS_KEY_ID = Sys.getenv("PAWSEY_AWS_ACCESS_KEY_ID"),
+#     AWS_SECRET_ACCESS_KEY = Sys.getenv("PAWSEY_AWS_SECRET_ACCESS_KEY"),
+#     AWS_REGION = "",
+#     AWS_S3_ENDPOINT = endpoint,
+#     CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE = "YES",
+#     AWS_VIRTUAL_HOSTING = "NO", 
+#     GDAL_HTTP_MAX_RETRY = "4",
+#     #GDAL_DISABLE_READDIR_ON_OPEN = "EMPTY_DIR", 
+#     GDAL_HTTP_RETRY_DELAY = "10"
+#     #,AWS_NO_SIGN_REQUEST = "YES"
+#   )
+#   
+# }
 
 
 
