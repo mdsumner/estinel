@@ -1393,12 +1393,12 @@
                                       <div 
                                         className="font-mono text-[10px] cursor-pointer hover:text-cyan-400 bg-gray-900 px-1 rounded"
                                         onClick={() => copyToClipboard(
-                                          '[' + imageCoords.bbox.xmin.toFixed(2) + ', ' + imageCoords.bbox.ymin.toFixed(2) + ', ' + imageCoords.bbox.xmax.toFixed(2) + ', ' + imageCoords.bbox.ymax.toFixed(2) + ']',
+                                          imageCoords.bbox.xmin.toFixed(2) + ', ' + imageCoords.bbox.ymin.toFixed(2) + ', ' + imageCoords.bbox.xmax.toFixed(2) + ', ' + imageCoords.bbox.ymax.toFixed(2),
                                           'Bbox'
                                         )}
                                         title="Click to copy [xmin, ymin, xmax, ymax]"
                                       >
-                                        [{imageCoords.bbox.xmin.toFixed(2)}, {imageCoords.bbox.ymin.toFixed(2)}, {imageCoords.bbox.xmax.toFixed(2)}, {imageCoords.bbox.ymax.toFixed(2)}]
+                                        {imageCoords.bbox.xmin.toFixed(2)}, {imageCoords.bbox.ymin.toFixed(2)}, {imageCoords.bbox.xmax.toFixed(2)}, {imageCoords.bbox.ymax.toFixed(2)}
                                       </div>
                                     </div>
                                     
@@ -1407,12 +1407,12 @@
                                       <div 
                                         className="font-mono text-[10px] cursor-pointer hover:text-cyan-400 bg-gray-900 px-1 rounded"
                                         onClick={() => copyToClipboard(
-                                          '[' + imageCoords.bbox.xmin.toFixed(2) + ', ' + imageCoords.bbox.xmax.toFixed(2) + ', ' + imageCoords.bbox.ymin.toFixed(2) + ', ' + imageCoords.bbox.ymax.toFixed(2) + ']',
+                                          imageCoords.bbox.xmin.toFixed(2) + ', ' + imageCoords.bbox.xmax.toFixed(2) + ', ' + imageCoords.bbox.ymin.toFixed(2) + ', ' + imageCoords.bbox.ymax.toFixed(2) ,
                                           'Extent'
                                         )}
                                         title="Click to copy [xmin, xmax, ymin, ymax]"
                                       >
-                                        [{imageCoords.bbox.xmin.toFixed(2)}, {imageCoords.bbox.xmax.toFixed(2)}, {imageCoords.bbox.ymin.toFixed(2)}, {imageCoords.bbox.ymax.toFixed(2)}]
+                                        {imageCoords.bbox.xmin.toFixed(2)}, {imageCoords.bbox.xmax.toFixed(2)}, {imageCoords.bbox.ymin.toFixed(2)}, {imageCoords.bbox.ymax.toFixed(2)}
                                       </div>
                                     </div>
                                     
