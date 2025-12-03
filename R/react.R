@@ -13,14 +13,14 @@ SITE_ID_template <- "site_%04i"
 # }
 url_template <- 
 '"url": {
-           "view_q128": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_q128.png",
-           "view_hist": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_histeq.png",
-           "view_stretch": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_stretch.png"
+           "q128": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_q128.png",
+           "histeq": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_histeq.png",
+           "stretch": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_stretch.png"
          }, 
         "thumbnail": {
-           "view_q128": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_q128.png",
-           "view_hist": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_histeq.png",
-           "view_stretch": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_stretch.png"
+           "q128": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_q128.png",
+           "histeq": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_histeq.png",
+           "stretch": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_stretch.png"
          }'
 image_template <- 
   '{
