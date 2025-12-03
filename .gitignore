@@ -4,5 +4,7 @@ _targets
 expt/heard.sentinel/_targets
 gif/
 Emperor penguin colony locations_all_2024.xlsx
+Emperor colonies_2022.xlsx
 log_directory
-inst/doc
+_s3_markers
+pyfixes
