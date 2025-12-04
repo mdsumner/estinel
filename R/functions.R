@@ -204,7 +204,8 @@ define_locations_table <- function() {
     data.frame(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556),
     data.frame(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
     data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) ), 
-    data.frame(location = "Dome_C_North", lon = 122.52059, lat = -75.34132)
+    data.frame(location = "Dome_C_North", lon = 122.52059, lat = -75.34132), 
+    data.frame(location = "Bechervaise _Island", lon = 62.817, lat = -67.583)
     , cleanup_table() ) |>  fill_values()
 }
 fill_values <- function(x) {
@@ -237,7 +238,7 @@ getstac_query <- function(x, limit = 300) {
   x
 }
 ## get the available dates
-getstac_json <- function(x) {
+getstac_json <- function(x, trigger) {
   js <- try(jsonlite::fromJSON(x$query))
   if (inherits(js, "try-error") || (length(js$features) < 1) || (!is.null(js$numberReturned) &&js$numberReturned < 1)) {
     return(list())
