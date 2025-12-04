@@ -58,7 +58,8 @@ tar_assign(
     qtable1 <- modify_qtable_yearly(spatial_window, daterange[1L], daterange[2L], provider, collection) |> tar_target()
     querytable <- getstac_query(qtable1) |> tar_target( pattern = map(qtable1))
     ## at this point the set reduces, because not every query has assets (we either return a list with json results, or a NULL so the dataframe collation blats them out)
-    stac_json_list <- getstac_json(querytable) |> tar_target(pattern = map(querytable), iteration = "list")
+    current_date_flag <- Sys.Date() |> tar_target()  ## just to invalidate the next step
+    stac_json_list <- getstac_json(querytable, current_date_flag) |> tar_target(pattern = map(querytable), iteration = "list")
     stac_json_table <- join_stac_json(querytable, stac_json_list) |> tar_target()
     stac_tables <- process_stac_table2(stac_json_table) |> 
       tar_target( pattern = map(stac_json_table))
