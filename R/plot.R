@@ -93,13 +93,4 @@ qm <- function(x, target_dim = c(1024, 0), target_crs = NULL, target_ext = NULL,
   ximage::ximage(out, ...)
   invisible(out)
 }
-stretch_histeq <- function(x, ...) {
-  ## stretch as if all the pixels were in the same band (not memory safe)
-  rv <- terra::stretch(terra::rast(matrix(terra::values(x))), histeq = TRUE, maxcell = terra::ncell(x))
-  ## set the values to the input, then stretch to 0,255
-  terra::stretch(terra::setValues(x, c(terra::values(rv))), histeq = FALSE, maxcell = terra::ncell(x))
-}
-stretch_q128 <- function(xx, n = 128L, type = 7L) {
-  q <- quantile(terra::values(xx), seq(0, 1, length.out = n), type = type, names = FALSE, na.rm = TRUE)
-  terra::stretch(terra::setValues(xx, q[cut(terra::values(xx), unique(q), labels = F, include.lowest = T)]))
-}
+
