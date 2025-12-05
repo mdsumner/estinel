@@ -173,47 +173,52 @@ build_scl_dsn <- function(assets, div = NULL, root = tempdir()) {
 cleanup_table <- function() {
   x <- readxl::read_excel("Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
     dplyr::rename(location = colony, lon = long) |> dplyr::select(-date)
+  x <- dplyr::filter(x, !grepl("Pointe", location))
+  
+  x2 <- readxl::read_excel("Emperor colonies_2022.xlsx") |> dplyr::transmute(location = Colony, lon = Long, lat = Lat)
+  keep <- which(!gsub("_", " ", x$location) %in% x2$location)
+  x <- rbind(x2, x[keep, ])
   stp <- unlist(gregexpr("[\\[\\(]", x$location)) -1
   stp[stp < 0] <- nchar(x$location[stp < 0])
   x$location <- substr(x$location, 1, stp)
   x$location <- trimws(x$location)
   x$location <- gsub("\\s+", "_", x$location, perl = TRUE)
   x$location <- gsub("é", "e", x$location)
-  
+  x$purpose <- as.list(rep("emperor", nrow(x)))
   x
 }
 define_locations_table <- function() {
   dplyr::bind_rows(
     ## first row is special, we include resolution and radiusx/y these are copied throughout if NA
     ## but other rows may have this value set also
-    data.frame(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy=3000), 
-    data.frame(location = "Dawson_Lampton_Ice_Tongue", lon  = -26.760, lat = -76.071),
-    data.frame(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600)), 
-    data.frame(location = "Casey_Station", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600)), 
-    data.frame(location = "Casey_Station_2", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), radiusx = 5000, radiusy = 5000), 
-    data.frame(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348),
-    data.frame(location = "Heard_Island_Atlas_Cove_2", lon = 73.38681, lat = -53.024348, radiusx = 5000, radiusy = 5000),
-    data.frame(location = "Heard_Island_60m", lon = 73.50281, lat= -53.09143, resolution = 60, radiusx = 24000, radiusy=14000),
-    data.frame(location = "Heard_Island_Big_Ben", lon = 73.516667, lat = -53.1), 
-    data.frame(location = "Heard_Island_Spit_Bay", lon = 73.71887, lat = -53.1141),
-    data.frame(location = "Heard_Island_Spit_Bay_2", lon = 73.71887, lat = -53.1141, radiusx = 5000, radiusy = 5000),
-    data.frame(location = "Heard_Island_Compton_Lagoon", lon = 73.610672, lat = -53.058079),
+    tibble::tibble(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy=3000), 
+    tibble::tibble(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600), purpose = list(c("base"))), 
+    tibble::tibble(location = "Casey_Station", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), purpose = list(c("base"))), 
+    tibble::tibble(location = "Casey_Station_2", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), radiusx = 5000, radiusy = 5000, purpose = list(c("base"))), 
+    tibble::tibble(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348, purpose = list(c("base", "heard"))),
+    tibble::tibble(location = "Heard_Island_Atlas_Cove_2", lon = 73.38681, lat = -53.024348, radiusx = 5000, radiusy = 5000, purpose = list(c("base", "heard"))),
+    tibble::tibble(location = "Heard_Island_60m", lon = 73.50281, lat= -53.09143, resolution = 60, radiusx = 24000, radiusy=14000, purpose = list(c("heard"))),
+    tibble::tibble(location = "Heard_Island_Big_Ben", lon = 73.516667, lat = -53.1, purpose = list(c("heard"))), 
+    tibble::tibble(location = "Heard_Island_Spit_Bay", lon = 73.71887, lat = -53.1141, purpose = list(c("heard"))),
+    tibble::tibble(location = "Heard_Island_Spit_Bay_2", lon = 73.71887, lat = -53.1141, radiusx = 5000, radiusy = 5000, purpose = list(c("heard"))),
+    tibble::tibble(location = "Heard_Island_Compton_Lagoon", lon = 73.610672, lat = -53.058079, purpose = list(c("heard"))),
     
-    data.frame(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600)),
-    data.frame(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871),
-    data.frame(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556),
-    data.frame(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
-    data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) ), 
-    data.frame(location = "Dome_C_North", lon = 122.52059, lat = -75.34132), 
-    data.frame(location = "Bechervaise_Island", lon = 62.817, lat = -67.583),
-    data.frame(location = "Cape_Denison", lon = 142.6630347, lat = -67.0085726), 
-    data.frame(location = "Glen_Lusk", lon = 147.19475644052184, lat = -42.81829130353533),
-    data.frame(location = "Fern_Tree", lon = 147.260093482072, lat = -42.922335920324294)
+    tibble::tibble(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600), purpose = list(c("base"))),
+    tibble::tibble(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871, purpose = list(c("base"))),
+    tibble::tibble(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = list(c("macquarie"))),
+    tibble::tibble(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
+    tibble::tibble(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) ), 
+    tibble::tibble(location = "Dome_C_North", lon = 122.52059, lat = -75.34132, purpose = list(c("base"))), 
+    tibble::tibble(location = "Bechervaise_Island", lon = 62.817, lat = -67.583, purpose = list(c("adelie"))),
+    tibble::tibble(location = "Cape_Denison", lon = 142.6630347, lat = -67.0085726, purpose = list(c("adelie"))), 
+    tibble::tibble(location = "Glen_Lusk", lon = 147.19475644052184, lat = -42.81829130353533),
+    tibble::tibble(location = "Fern Tree", lon = 147.260093482072, lat = -42.922335920324294)
     , cleanup_table() ) |>  fill_values() |> check_table()
 }
 check_table <- function(x) {
   if (any(is.na(x))) warning("locations table contains NAs")
   bad <- apply(is.na(x), 1, any)
+
   x <- x[!bad, ]
   if (nrow(x) < 1) stop("no valid location rows (are there NAs?)")
   x
@@ -223,6 +228,8 @@ fill_values <- function(x) {
     bad <- is.na(x[[var]])
     x[[var]][bad] <- x[[var]][1]  ## better not be NA
   }
+  badpurpose <- is.na(x[["purpose"]])
+  if (any(is.na(badpurpose))) x[["purpose"]][bad] <- "none"
   x$SITE_ID <- sprintf("site_%s", unlist(lapply(x$location, digest::digest, "murmur32")))
   x
 }
