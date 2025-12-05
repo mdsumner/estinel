@@ -14,3 +14,7 @@
 ^inst/docs/image-catalog.json$
 ^Emperor penguin colony locations_all_2024.xlsx$
 ^Emperor colonies_2022.xlsx$
+^_s3_markers$
+^pyfixes$
+^devcode$
+^devdocs$
