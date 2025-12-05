@@ -205,8 +205,18 @@ define_locations_table <- function() {
     data.frame(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
     data.frame(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) ), 
     data.frame(location = "Dome_C_North", lon = 122.52059, lat = -75.34132), 
-    data.frame(location = "Bechervaise _Island", lon = 62.817, lat = -67.583)
-    , cleanup_table() ) |>  fill_values()
+    data.frame(location = "Bechervaise_Island", lon = 62.817, lat = -67.583),
+    data.frame(location = "Cape_Denison", lon = 142.6630347, lat = -67.0085726), 
+    data.frame(location = "Glen_Lusk", lon = 147.19475644052184, lat = -42.81829130353533),
+    data.frame(location = "Fern_Tree", lon = 147.260093482072, lat = -42.922335920324294)
+    , cleanup_table() ) |>  fill_values() |> check_table()
+}
+check_table <- function(x) {
+  if (any(is.na(x))) warning("locations table contains NAs")
+  bad <- apply(is.na(x), 1, any)
+  x <- x[!bad, ]
+  if (nrow(x) < 1) stop("no valid location rows (are there NAs?)")
+  x
 }
 fill_values <- function(x) {
   for (var in c("resolution", "radiusx", "radiusy")) {
@@ -464,3 +474,207 @@ warp_to_dsn <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = 
 
 
 
+# ==============================================================================
+# ESTINEL MARKER FUNCTIONS - ADD TO END OF R/functions.R
+# ==============================================================================
+
+#' Read markers from S3 for all locations
+read_markers <- function(bucket, spatial_window) {
+  set_gdal_envs()
+  
+  markers_list <- vector("list", nrow(spatial_window))
+  
+  for (i in seq_len(nrow(spatial_window))) {
+    site_id <- spatial_window$SITE_ID[i]
+    marker_path <- sprintf("/vsis3/%s/markers/%s.json", bucket, site_id)
+    
+    if (gdalraster::vsi_stat(marker_path, "exists")) {
+      tryCatch({
+        con <- new(gdalraster::VSIFile, marker_path, "r")
+        json_bytes <- con$ingest(-1)
+        con$close()
+        
+        marker_data <- jsonlite::fromJSON(rawToChar(json_bytes))
+        markers_list[[i]] <- data.frame(
+          SITE_ID = site_id,
+          location = marker_data$location,
+          last_solarday = as.Date(marker_data$last_solarday),
+          stringsAsFactors = FALSE
+        )
+      }, error = function(e) {
+        markers_list[[i]] <- data.frame(
+          SITE_ID = site_id,
+          location = spatial_window$location[i],
+          last_solarday = as.Date(NA),
+          stringsAsFactors = FALSE
+        )
+      })
+    } else {
+      markers_list[[i]] <- data.frame(
+        SITE_ID = site_id,
+        location = spatial_window$location[i],
+        last_solarday = as.Date(NA),
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  
+  dplyr::bind_rows(markers_list)
+}
+
+#' Prepare STAC query date ranges with timezone buffer
+prepare_queries <- function(spatial_window, markers, 
+                            default_start = "2015-01-01", 
+                            now = Sys.time()) {
+  
+  query_table <- dplyr::left_join(spatial_window, markers, 
+                                  by = c("SITE_ID", "location"))
+  
+  query_table$start_solarday <- ifelse(
+    is.na(query_table$last_solarday),
+    as.Date(default_start),
+    query_table$last_solarday + 1
+  )
+  
+  end_solarday <- as.Date(now)
+  
+  query_table$offset_hours <- query_table$lon / 15
+  query_table$buffer_hours <- abs(query_table$offset_hours) + 12
+  
+  query_table$query_start_utc <- as.POSIXct(query_table$start_solarday, tz = "UTC") - 
+    (query_table$buffer_hours * 3600)
+  query_table$query_end_utc <- as.POSIXct(end_solarday + 1, tz = "UTC") + 
+    (query_table$buffer_hours * 3600)
+  
+  query_table$start <- format(query_table$query_start_utc, "%Y-%m-%dT%H:%M:%SZ")
+  query_table$end <- format(query_table$query_end_utc, "%Y-%m-%dT%H:%M:%SZ")
+  
+  query_table
+}
+
+#' Build STAC query with per-location date ranges
+getstac_query_adaptive <- function(query_specs, provider, collection, limit = 300) {
+  llnames <- c("lonmin", "lonmax", "latmin", "latmax")
+  
+  query_specs$provider <- provider
+  query_specs$collection <- collection
+  query_specs$query <- NA_character_
+  
+  for (i in seq_len(nrow(query_specs))) {
+    llex <- unlist(query_specs[i, llnames])
+    date <- c(query_specs$start[i], query_specs$end[i])
+    
+    href <- sds::stacit(llex, date, limit = limit, 
+                        collections = collection, 
+                        provider = provider)
+    query_specs$query[i] <- href
+  }
+  
+  query_specs
+}
+
+#' Filter STAC results to only new solardays
+filter_new_solardays <- function(stac_table) {
+  if (!"start_solarday" %in% names(stac_table)) {
+    return(stac_table)
+  }
+  
+  for (i in seq_len(nrow(stac_table))) {
+    if (!is.na(stac_table$start_solarday[i])) {
+      assets <- stac_table$assets[[i]]
+      if (nrow(assets) > 0 && "solarday" %in% names(assets)) {
+        assets <- assets[assets$solarday > stac_table$start_solarday[i], ]
+        stac_table$assets[[i]] <- assets
+      }
+    }
+  }
+  
+  stac_table[vapply(stac_table$assets, nrow, integer(1)) > 0, ]
+}
+
+#' Extract latest solarday per location from processed images
+update_markers <- function(images_table) {
+  marker_updates <- images_table |>
+    dplyr::group_by(SITE_ID, location) |>
+    dplyr::summarise(
+      last_solarday = max(solarday, na.rm = TRUE),
+      n_images = dplyr::n(),
+      .groups = "drop"
+    ) |>
+    dplyr::filter(!is.na(last_solarday), !is.infinite(last_solarday))
+  
+  marker_updates
+}
+
+#' Write updated markers to S3
+write_markers <- function(bucket, updated_markers) {
+  set_gdal_envs()
+  
+  success <- vector("logical", nrow(updated_markers))
+  
+  for (i in seq_len(nrow(updated_markers))) {
+    marker_data <- list(
+      SITE_ID = updated_markers$SITE_ID[i],
+      location = updated_markers$location[i],
+      last_solarday = as.character(updated_markers$last_solarday[i]),
+      n_images = updated_markers$n_images[i],
+      last_updated = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ")
+    )
+    
+    json_str <- jsonlite::toJSON(marker_data, auto_unbox = TRUE, pretty = TRUE)
+    json_bytes <- charToRaw(json_str)
+    
+    marker_path <- sprintf("/vsis3/%s/markers/%s.json", bucket, updated_markers$SITE_ID[i])
+    
+    tryCatch({
+      con <- new(gdalraster::VSIFile, marker_path, "w")
+      con$write(json_bytes)
+      con$close()
+      
+      success[i] <- gdalraster::vsi_stat(marker_path, "exists")
+    }, error = function(e) {
+      warning(sprintf("Failed to write marker for %s: %s", 
+                      updated_markers$location[i], e$message))
+      success[i] <- FALSE
+    })
+  }
+  
+  if (sum(success) < length(success)) {
+    warning(sprintf("Wrote %d/%d markers successfully", 
+                    sum(success), length(success)))
+  }
+  
+  success
+}
+
+#' Debug helper: inspect markers for all locations
+inspect_markers <- function(bucket) {
+  set_gdal_envs()
+  
+  marker_dir <- sprintf("/vsis3/%s/markers/", bucket)
+  
+  files <- gdalraster::vsi_read_dir(marker_dir, max_files = 1000)
+  
+  if (length(files) == 0) {
+    return(data.frame(SITE_ID = character(), location = character(), 
+                      last_solarday = character(), last_updated = character()))
+  }
+  
+  markers_list <- vector("list", length(files))
+  
+  for (i in seq_along(files)) {
+    marker_path <- file.path(marker_dir, files[i])
+    tryCatch({
+      con <- new(gdalraster::VSIFile, marker_path, "r")
+      json_bytes <- con$ingest(-1)
+      con$close()
+      
+      marker_data <- jsonlite::fromJSON(rawToChar(json_bytes))
+      markers_list[[i]] <- as.data.frame(marker_data, stringsAsFactors = FALSE)
+    }, error = function(e) {
+      markers_list[[i]] <- NULL
+    })
+  }
+  
+  dplyr::bind_rows(markers_list)
+}
