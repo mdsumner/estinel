@@ -893,32 +893,32 @@ write_markers <- function(bucket, updated_markers) {
   success
 }
 
-write_react_json <- function(x) {
-  set_gdal_envs()
-  allfiles <- split(x, x$location) 
-  locationdets <- lapply(allfiles, function(aloc) {
-    imagerow <- lapply(split(aloc, 1:nrow(aloc)), function(arow) {
-      list(id = digest::digest(arow), 
-           date = format(arow[["solarday"]]), 
-           url = list(q128 = arow$view_q128, histeq = arow$view_histeq, stretch = arow$view_stretch),
-           thumbnail = list(q128 = arow$thumb_q128, histeq = arow$thumb_histeq, stretch = arow$thumb_stretch), 
-           download = arow$outfile)
-    })
-    location_id <- aloc$SITE_ID[1L]
-    location_name <- aloc$location[1L]
-    out <- list(id = location_id, name = location_name, images = imagerow)
-    if ("purpose" %in% names(aloc)) {
-      out$purpose <- aloc$purpose[[1]]  # purpose is list column
-    }
-    out
-  })
-  outfile <- "inst/docs/image-catalog.json"
-  if (!is_cloud(outfile)) {
-    if (!fs::dir_exists(dirname(outfile))) fs::dir_create(dirname(outfile))
-    jsonlite::write_json(list(locations = locationdets), outfile, pretty = TRUE, auto_unbox = TRUE)
-  }
-  outfile
-}
+# write_react_json <- function(x) {
+#   set_gdal_envs()
+#   allfiles <- split(x, x$location) 
+#   locationdets <- lapply(allfiles, function(aloc) {
+#     imagerow <- lapply(split(aloc, 1:nrow(aloc)), function(arow) {
+#       list(id = digest::digest(arow), 
+#            date = format(arow[["solarday"]]), 
+#            url = list(q128 = arow$view_q128, histeq = arow$view_histeq, stretch = arow$view_stretch),
+#            thumbnail = list(q128 = arow$thumb_q128, histeq = arow$thumb_histeq, stretch = arow$thumb_stretch), 
+#            download = arow$outfile)
+#     })
+#     location_id <- aloc$SITE_ID[1L]
+#     location_name <- aloc$location[1L]
+#     out <- list(id = location_id, name = location_name, images = imagerow)
+#     if ("purpose" %in% names(aloc)) {
+#       out$purpose <- aloc$purpose[[1]]  # purpose is list column
+#     }
+#     out
+#   })
+#   outfile <- "inst/docs/image-catalog.json"
+#   if (!is_cloud(outfile)) {
+#     if (!fs::dir_exists(dirname(outfile))) fs::dir_create(dirname(outfile))
+#     jsonlite::write_json(list(locations = locationdets), outfile, pretty = TRUE, auto_unbox = TRUE)
+#   }
+#   outfile
+# }
 
 
 ## CAS system
@@ -1191,40 +1191,23 @@ extract_s3_paths <- function(tracked_results, path_field = "s3_path") {
 # Add to R/functions.R
 # ==============================================================================
 
-#' Build catalog from S3 bucket listing
-#' 
-#' Reads actual files on S3 to build catalog, independent of targets pipeline.
-#' This ensures catalog reflects reality (what exists on S3), not just the
-#' current run's outputs (viewtable).
-#'
-#' @param bucket Character. Bucket name
-#' @param prefix Character. Path prefix 
-#' @param locations_table Data frame. Valid location names (from tabl)
-#' @param warn_unknown Logical. Warn about unknown locations?
-#' @return Data frame with catalog entries
+
 build_catalog_from_s3 <- function(bucket = "estinel",
                                   prefix = "sentinel-2-c1-l2a",
-                                  locations_table = NULL,
-                                  warn_unknown = TRUE) {
-  # Install mc binary (first time only)
-  #install_mc()
+                                  locations_table) {
   
-  # Configure alias for Pawsey
-  mc_alias_set(
-    alias = "pawsey",
-    endpoint = "projects.pawsey.org.au")
   message("Listing S3 bucket: ", bucket, "/", prefix)
   
-  # List all files
+  # List all files (include "pawsey/" alias prefix!)
   files <- minioclient::mc_ls(
-    paste0("pawsey", "/", bucket, "/", prefix),
+    paste0("pawsey/", bucket, "/", prefix),
     recursive = TRUE,
     details = TRUE
   )
   
   message("Found ", nrow(files), " total objects")
   
-  # Filter to RGB composites only (not SCL, not PNGs)
+  # Filter to RGB TIFs only (not SCL)
   rgb_files <- files |>
     dplyr::filter(
       tools::file_ext(key) == "tif",
@@ -1233,77 +1216,37 @@ build_catalog_from_s3 <- function(bucket = "estinel",
   
   message("Found ", nrow(rgb_files), " RGB TIFFs")
   
-  # Parse location and date from paths
-  # Format: sentinel-2-c1-l2a/2025/12/05/Location_Name_2025-12-05.tif
+  # Parse location and date from filenames
   catalog <- rgb_files |>
     dplyr::mutate(
-      # Extract components from path
       filename = basename(key),
       location_date = tools::file_path_sans_ext(filename),
-      # Parse location and solarday
       location = sub("_[0-9]{4}-[0-9]{2}-[0-9]{2}$", "", location_date),
       solarday = as.Date(sub(".*_([0-9]{4}-[0-9]{2}-[0-9]{2})$", "\\1", location_date))
     ) |>
-    dplyr::filter(!is.na(solarday)) |>  # Must have valid date
-    dplyr::mutate(
-      # Build URLs (full paths to S3)
-      outfile = paste0("https://projects.pawsey.org.au/", bucket, "/", key),
-      # Corresponding view PNGs
-      base_path = sub("\\.tif$", "", key),
-      view_q128 = paste0("https://projects.pawsey.org.au/", bucket, "/", base_path, "_q128.png"),
-      view_histeq = paste0("https://projects.pawsey.org.au/", bucket, "/", base_path, "_histeq.png"),
-      view_stretch = paste0("https://projects.pawsey.org.au/", bucket, "/", base_path, "_stretch.png"),
-      # Corresponding thumbnails
-      thumb_base = sub("sentinel-2-c1-l2a/", "thumbs/sentinel-2-c1-l2a/", base_path),
-      thumb_q128 = paste0("https://projects.pawsey.org.au/", bucket, "/", thumb_base, "_q128.png"),
-      thumb_histeq = paste0("https://projects.pawsey.org.au/", bucket, "/", thumb_base, "_histeq.png"),
-      thumb_stretch = paste0("https://projects.pawsey.org.au/", bucket, "/", thumb_base, "_stretch.png")
+    dplyr::filter(!is.na(solarday)) |>
+    dplyr::select(location, solarday)
+  
+  # JOIN to get SITE_ID
+  catalog <- catalog |>
+    dplyr::left_join(
+      locations_table |> dplyr::select(location, SITE_ID),
+      by = "location"
     )
   
-  # Validate locations if table provided
-  if (!is.null(locations_table)) {
-    valid_locations <- unique(locations_table$location)
-    unknown_locations <- setdiff(unique(catalog$location), valid_locations)
-    
-    if (length(unknown_locations) > 0) {
-      if (warn_unknown) {
-        warning(
-          "Found ", length(unknown_locations), " unknown location(s) in S3:\n",
-          paste("  -", unknown_locations, collapse = "\n"),
-          "\nThese will be included in catalog but may be orphaned/test data."
-        )
-      }
-      
-      # Flag unknown locations
-      catalog <- catalog |>
-        dplyr::mutate(
-          location_status = dplyr::if_else(
-            location %in% valid_locations,
-            "valid",
-            "unknown"
-          )
-        )
-    } else {
-      catalog$location_status <- "valid"
-    }
-  } else {
-    catalog$location_status <- "not_checked"
+  # Warn about orphaned locations
+  missing_id <- catalog |> dplyr::filter(is.na(SITE_ID))
+  if (nrow(missing_id) > 0) {
+    unknown_locs <- unique(missing_id$location)
+    warning(
+      "Found ", length(unknown_locs), " location(s) in S3 not in locations table:\n",
+      paste("  -", unknown_locs, collapse = "\n")
+    )
   }
   
-  # Select final columns
-  catalog <- catalog |>
-    dplyr::select(
-      location, 
-      solarday, 
-      outfile,
-      view_q128, 
-      view_histeq, 
-      view_stretch,
-      thumb_q128, 
-      thumb_histeq, 
-      thumb_stretch,
-      location_status
-    ) |>
+  # Return only valid rows
+  catalog <- catalog |> 
+    dplyr::filter(!is.na(SITE_ID)) |>
     dplyr::arrange(location, solarday)
   
   message("Built catalog with ", nrow(catalog), " entries")
@@ -1312,7 +1255,6 @@ build_catalog_from_s3 <- function(bucket = "estinel",
   
   catalog
 }
-
 #' Audit catalog against locations table
 #'
 #' Helper to inspect what's in S3 vs what's defined in locations
@@ -1336,4 +1278,83 @@ audit_catalog_locations <- function(catalog_table, locations_table) {
       missing_imagery = length(setdiff(defined_locs, catalog_locs))
     )
   )
+}
+
+
+write_react_json <- function(viewtable) {
+  collection <- "sentinel-2-c1-l2a"
+  SITE_ID_template <- "site_%04i"
+  # {
+  #   "url": {
+  #     "view": "https://.../image.png",
+  #     "view_hist": "https://.../image_hist.png"
+  #   },
+  #   "thumbnail": {
+  #     "view": "https://.../thumbs/image.png",
+  #     "view_hist": "https://.../thumbs/image_hist.png"
+  #   }
+  # }
+  url_template <- 
+    '"url": {
+           "view_q128": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_q128.png",
+           "view_hist": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_histeq.png",
+           "view_stretch": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_stretch.png"
+         }, 
+        "thumbnail": {
+           "view_q128": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_q128.png",
+           "view_hist": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_histeq.png",
+           "view_stretch": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_stretch.png"
+         }'
+  image_template <- 
+    '{
+          "id": "<<IMAGE_ID>>",
+                   <<IMAGE_URL>>,
+          "download": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>.tif",
+          "date": "<<DATE>>"
+}'
+  
+  
+  site_template <- 
+    '{
+    "id": "<<SITE_ID>>",
+    "name": "<<SITE_NAME>>",
+    "images": [
+      %s
+    ]
+}'
+  locations <- unique(viewtable$location)
+  sites <- character()
+  
+  for (j in 1:length(locations)) {
+    
+    imagetable <- dplyr::filter(viewtable, location == locations[j])
+    SITE_NAME <- imagetable$location[j]
+    #SITE_ID <- sprintf(SITE_ID_template, j)
+    SITE_ID <- imagetable$SITE_ID[1]
+    images <- character()
+    for (i in 1:nrow(imagetable)) {
+      DATE <- format(as.Date(imagetable$solarday[i]))
+      SDATE <- format(as.Date(imagetable$solarday[i]), "%Y/%m/%d")
+      
+      IMAGE_ID <- glue::glue("{collection}/{SDATE}/{SITE_NAME}_{DATE}")
+      IMAGE_URL <- glue::glue(url_template, .open = "<<", .close = ">>")
+      
+      
+      images <- paste0(c(images, glue::glue(image_template, .open = "<<", .close = ">>")), collapse = ",\n")
+      
+    }
+    
+    sites <- paste0(c(sites, glue::glue(sprintf(site_template, images), .open = "<<", .close = ">>")), collapse = ",\n")
+    
+  }
+  jstext <- sprintf('{
+"locations": [
+ %s
+]
+        }', sites)
+  #writeLines(jstext)
+  outfile <- "inst/docs/image-catalog.json"
+  writeLines(jstext, outfile)
+  outfile
+  
 }
