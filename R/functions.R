@@ -257,6 +257,7 @@ define_locations_table <- function() {
     tibble::tibble(location = "Pedra_Branca_Eddystone", lon = 146.9831392, lat = -43.852779), 
     tibble::tibble(location = "Precipitous_Bluff", lon = 146.5987335, lat = -43.4703973), 
     tibble::tibble(location = "Mt_Anne", lon = 146.4113971, lat = -42.9588201), 
+    tibble::tibble(location = "Robbins_Island", lon = 144.8985195, lat = -40.6977141, radiusx = 5000, radiusy = 5000),
     tibble::tibble(location = "Dumont_dUrville_Station", lon = 139.9977592, lat = -66.6650502)
     , cleanup_table() ) |>  fill_values() |> check_table()
 }
