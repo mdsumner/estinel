@@ -165,7 +165,7 @@ tar_assign({
     tar_force(force = TRUE)
   
   
-  catalog_table <- build_catalog_from_s3(bucket, "sentinel-2-c1-l2a", tabl) |> tar_force(force = TRUE)
+  catalog_table <- build_catalog_from_s3(bucket, "sentinel-2-c1-l2a", tabl, wait_for = viewtable) |> tar_force(force = TRUE)
   catalog_audit <- audit_catalog_locations(catalog_table, tabl) |> tar_force(force = TRUE)
 
   # === WEB INTERFACE ===
