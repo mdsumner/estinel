@@ -1,4 +1,31 @@
-
+# Add to R/functions.R
+audit_location_coverage <- function(viewtable, expected_start = "2015-01-01") {
+  coverage <- viewtable |> 
+    dplyr::group_by(location) |> 
+    dplyr::summarise(
+      n_images = dplyr::n(),
+      oldest = min(solarday),
+      newest = max(solarday),
+      years = paste(unique(format(solarday, "%Y")), collapse = ","),
+      date_span_days = as.numeric(difftime(max(solarday), min(solarday), units = "days")),
+      .groups = "drop"
+    ) |> 
+    dplyr::mutate(
+      suspicious = oldest > as.Date("2020-01-01"),  # Should have older data
+      years_count = lengths(strsplit(years, ","))
+    ) |> 
+    dplyr::arrange(oldest)
+  
+  list(
+    all = coverage,
+    suspicious = dplyr::filter(coverage, suspicious),
+    summary = list(
+      total_locations = nrow(coverage),
+      suspicious_count = sum(coverage$suspicious),
+      total_images = sum(coverage$n_images)
+    )
+  )
+}
 build_image_dsn <- function(assets, resample = "near", rootdir = tempdir()) {
   res <- assets$resolution[1]
   root <- sprintf("%s/%s", rootdir, assets$collection[1])
@@ -203,10 +230,10 @@ define_locations_table <- function() {
   dplyr::bind_rows(
     ## first row is special, we include resolution and radiusx/y these are copied throughout if NA
     ## but other rows may have this value set also
-    tibble::tibble(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy=3000), 
+    tibble::tibble(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy=3000, purpose = list("none")), 
     tibble::tibble(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600), purpose = list(c("base"))), 
-    tibble::tibble(location = "Casey_Station", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), purpose = list(c("base"))), 
-    tibble::tibble(location = "Casey_Station_2", lon = cbind(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), radiusx = 5000, radiusy = 5000, purpose = list(c("base"))), 
+    tibble::tibble(location = "Casey_Station", lon = c(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), purpose = list(c("base"))), 
+    tibble::tibble(location = "Casey_Station_2", lon = c(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), radiusx = 5000, radiusy = 5000, purpose = list(c("base"))), 
     tibble::tibble(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348, purpose = list(c("base", "heard"))),
     tibble::tibble(location = "Heard_Island_Atlas_Cove_2", lon = 73.38681, lat = -53.024348, radiusx = 5000, radiusy = 5000, purpose = list(c("base", "heard"))),
     tibble::tibble(location = "Heard_Island_60m", lon = 73.50281, lat= -53.09143, resolution = 60, radiusx = 24000, radiusy=14000, purpose = list(c("heard"))),
@@ -224,7 +251,8 @@ define_locations_table <- function() {
     tibble::tibble(location = "Bechervaise_Island", lon = 62.817, lat = -67.583, purpose = list(c("adelie"))),
     tibble::tibble(location = "Cape_Denison", lon = 142.6630347, lat = -67.0085726, purpose = list(c("adelie"))), 
     tibble::tibble(location = "Glen_Lusk", lon = 147.19475644052184, lat = -42.81829130353533),
-    tibble::tibble(location = "Fern Tree", lon = 147.260093482072, lat = -42.922335920324294)
+    tibble::tibble(location = "Dolphin_Sands", lon= 148.0999737, lat = -42.0889629, radiusx = 5000, radiusy=5000),
+    tibble::tibble(location = "Fern_Tree", lon = 147.260093482072, lat = -42.922335920324294)
     , cleanup_table() ) |>  fill_values() |> check_table()
 }
 
@@ -233,8 +261,11 @@ fill_values <- function(x) {
     bad <- is.na(x[[var]])
     x[[var]][bad] <- x[[var]][1]  ## better not be NA
   }
-  badpurpose <- is.na(x[["purpose"]])
-  if (any(is.na(badpurpose))) x[["purpose"]][bad] <- "none"
+  for (i in seq_along(x$purpose)) {
+    if (all(is.na(x$purpose[[i]])) | is.null(x$purpose[[i]])) {
+      x$purpose[[i]] <- "none"
+    }
+  }
   x$SITE_ID <- sprintf("site_%s", unlist(lapply(x$location, digest::digest, "murmur32")))
   x
 }
@@ -433,7 +464,7 @@ prepare_queries <- function(spatial_window, markers,
   query_table <- dplyr::left_join(spatial_window, markers, 
                                   by = c("SITE_ID", "location"))
   
-  query_table$start_solarday <- ifelse(
+  query_table$start_solarday <- dplyr::if_else(
     is.na(query_table$last_solarday),
     as.Date(default_start),
     query_table$last_solarday + 1
@@ -454,7 +485,182 @@ prepare_queries <- function(spatial_window, markers,
   
   query_table
 }
+# ==============================================================================
+# WORKAROUND: Smart Query Chunking for Bootstrap + Markers
+# ==============================================================================
+# Add this to R/functions.R (after prepare_queries)
+# ==============================================================================
 
+#' Prepare queries with automatic chunking for long date ranges
+#'
+#' Detects bootstrap runs (> 365 days) and chunks into yearly queries
+#' to avoid STAC limit=300 truncation. Incremental runs (< 365 days)
+#' use single queries as before.
+#'
+#' @param spatial_window Data frame with location spatial windows
+#' @param markers Data frame with last_solarday per location
+#' @param default_start Character. Bootstrap start date
+#' @param now POSIXct. Current time
+#' @param chunk_threshold_days Integer. Days span to trigger chunking (default 365)
+#' @return Data frame with query specifications (potentially expanded with chunks)
+prepare_queries_chunked <- function(spatial_window, markers, 
+                                    default_start = "2015-01-01", 
+                                    now = Sys.time(),
+                                    chunk_threshold_days = 365) {
+  
+  # Start with basic query prep
+  query_table <- dplyr::left_join(spatial_window, markers, 
+                                  by = c("SITE_ID", "location"))
+  
+  # Fix: Use if_else to preserve Date class
+  query_table$start_solarday <- dplyr::if_else(
+    is.na(query_table$last_solarday),
+    as.Date(default_start),
+    query_table$last_solarday + 1
+  )
+  
+  end_solarday <- as.Date(now)
+  
+  # Calculate timezone buffers
+  query_table$offset_hours <- query_table$lon / 15
+  query_table$buffer_hours <- abs(query_table$offset_hours) + 12
+  
+  # NEW: Detect which locations need chunking
+  query_table$days_span <- as.numeric(end_solarday - query_table$start_solarday)
+  query_table$needs_chunking <- query_table$days_span > chunk_threshold_days
+  
+  # Separate into chunked and non-chunked
+  no_chunk <- query_table[!query_table$needs_chunking, ]
+  needs_chunk <- query_table[query_table$needs_chunking, ]
+  
+  # Process non-chunked (incremental runs)
+  if (nrow(no_chunk) > 0) {
+    no_chunk$query_start_utc <- as.POSIXct(no_chunk$start_solarday, tz = "UTC") - 
+      (no_chunk$buffer_hours * 3600)
+    no_chunk$query_end_utc <- as.POSIXct(end_solarday + 1, tz = "UTC") + 
+      (no_chunk$buffer_hours * 3600)
+    
+    no_chunk$start <- format(no_chunk$query_start_utc, "%Y-%m-%dT%H:%M:%SZ")
+    no_chunk$end <- format(no_chunk$query_end_utc, "%Y-%m-%dT%H:%M:%SZ")
+    no_chunk$chunk_id <- 1L
+  }
+  
+  # Process chunked (bootstrap runs)
+  chunked_list <- list()
+  if (nrow(needs_chunk) > 0) {
+    for (i in seq_len(nrow(needs_chunk))) {
+      row <- needs_chunk[i, ]
+      
+      # Create yearly chunks
+      start_date <- row$start_solarday
+      chunk_starts <- seq(start_date, end_solarday, by = "1 year")
+      
+      # Handle the last chunk (partial year)
+      if (chunk_starts[length(chunk_starts)] < end_solarday) {
+        chunk_starts <- c(chunk_starts, end_solarday)
+      }
+      
+      # Create a row for each chunk
+      for (j in seq_len(length(chunk_starts) - 1)) {
+        chunk_row <- row
+        chunk_start <- chunk_starts[j]
+        chunk_end <- min(chunk_starts[j + 1] - 1, end_solarday)
+        
+        # Apply timezone buffers to chunk boundaries
+        chunk_row$query_start_utc <- as.POSIXct(chunk_start, tz = "UTC") - 
+          (chunk_row$buffer_hours * 3600)
+        chunk_row$query_end_utc <- as.POSIXct(chunk_end + 1, tz = "UTC") + 
+          (chunk_row$buffer_hours * 3600)
+        
+        chunk_row$start <- format(chunk_row$query_start_utc, "%Y-%m-%dT%H:%M:%SZ")
+        chunk_row$end <- format(chunk_row$query_end_utc, "%Y-%m-%dT%H:%M:%SZ")
+        chunk_row$chunk_id <- as.integer(j)
+        
+        chunked_list[[length(chunked_list) + 1]] <- chunk_row
+      }
+    }
+    
+    chunked <- dplyr::bind_rows(chunked_list)
+  } else {
+    chunked <- needs_chunk[0, ]  # Empty with same structure
+  }
+  
+  # Combine and clean up
+  result <- dplyr::bind_rows(no_chunk, chunked)
+  result$needs_chunking <- NULL
+  result$days_span <- NULL
+  
+  result
+}
+
+#' Join chunked STAC results back to single location rows
+#'
+#' After querying with chunks, this consolidates all chunks for a location
+#' back into a single row with combined assets.
+#'
+#' @param stac_tables Data frame with STAC results (potentially chunked)
+#' @return Data frame with consolidated assets per location
+consolidate_chunks <- function(stac_tables) {
+  
+  # Identify locations that were chunked
+  chunked_locations <- stac_tables |> 
+    dplyr::group_by(SITE_ID, location) |> 
+    dplyr::summarise(n_chunks = dplyr::n(), .groups = "drop") |> 
+    dplyr::filter(n_chunks > 1)
+  
+  if (nrow(chunked_locations) == 0) {
+    # No chunking happened, return as-is
+    return(stac_tables)
+  }
+  
+  # Separate chunked and non-chunked
+  non_chunked <- stac_tables |> 
+    dplyr::anti_join(chunked_locations, by = c("SITE_ID", "location"))
+  
+  chunked <- stac_tables |> 
+    dplyr::semi_join(chunked_locations, by = c("SITE_ID", "location"))
+  
+  # Consolidate chunks by combining assets
+  consolidated <- chunked |> 
+    dplyr::group_by(SITE_ID, location) |> 
+    dplyr::summarise(
+      # Keep first row's metadata
+      lon = dplyr::first(lon),
+      lat = dplyr::first(lat),
+      resolution = dplyr::first(resolution),
+      radiusx = dplyr::first(radiusx),
+      radiusy = dplyr::first(radiusy),
+      purpose = list(dplyr::first(purpose)),
+      crs = dplyr::first(crs),
+      lonmin = dplyr::first(lonmin),
+      lonmax = dplyr::first(lonmax),
+      latmin = dplyr::first(latmin),
+      latmax = dplyr::first(latmax),
+      xmin = dplyr::first(xmin),
+      xmax = dplyr::first(xmax),
+      ymin = dplyr::first(ymin),
+      ymax = dplyr::first(ymax),
+      last_solarday = dplyr::first(last_solarday),
+      start_solarday = dplyr::first(start_solarday),
+      offset_hours = dplyr::first(offset_hours),
+      buffer_hours = dplyr::first(buffer_hours),
+      query_start_utc = min(query_start_utc),  # Earliest query
+      query_end_utc = max(query_end_utc),      # Latest query
+      start = dplyr::first(start),
+      end = dplyr::last(end),
+      provider = dplyr::first(provider),
+      collection = dplyr::first(collection),
+      query = dplyr::first(query),  # Just keep one
+      # COMBINE all assets from all chunks
+      assets = list(dplyr::bind_rows(assets)),
+      .groups = "drop"
+    )
+  
+  # Recombine
+  result <- dplyr::bind_rows(non_chunked, consolidated)
+  
+  result
+}
 process_stac_table2 <- function(table) {
   js <- table[["js"]][[1]]
   hrefs <- tibble::as_tibble(lapply(js$features$assets, \(.x) .x$href))
@@ -712,4 +918,422 @@ write_react_json <- function(x) {
     jsonlite::write_json(list(locations = locationdets), outfile, pretty = TRUE, auto_unbox = TRUE)
   }
   outfile
+}
+
+
+## CAS system
+
+# ==============================================================================
+# S3 CAS (Content-Addressable Storage) TRACKING FUNCTIONS
+# ==============================================================================
+# These functions enable targets to track S3 file changes via ETags
+# Add these to R/functions.R after write_react_json()
+# ==============================================================================
+
+#' Get S3 object ETag (MD5 hash) without downloading
+#'
+#' @param vsis3_uri Character. Path like "/vsis3/bucket/key"
+#' @param endpoint Character. S3 endpoint URL
+#' @return Character. ETag of the S3 object
+get_s3_etag <- function(vsis3_uri, endpoint = "projects.pawsey.org.au") {
+  # Convert /vsis3/bucket/key to s3://bucket/key
+  s3_uri <- sub("^/vsis3/", "s3://", vsis3_uri)
+  
+  # Parse bucket and key
+  parts <- sub("^s3://", "", s3_uri)
+  bucket <- sub("/.*", "", parts)
+  key <- sub("^[^/]+/", "", parts)
+  
+  # Get object metadata
+  obj_info <- aws.s3::head_object(
+    object = key,
+    bucket = bucket,
+    base_url = endpoint,
+    region = ""
+  )
+  
+  # Extract ETag (strip quotes if present)
+  etag <- attr(obj_info, "etag")
+  gsub('"', '', etag)
+}
+
+#' Create local CAS marker file for S3 object
+#'
+#' @param vsis3_uri Character. Path to S3 file
+#' @param marker_dir Character. Directory to store marker files
+#' @return Character. Path to created marker file
+create_s3_marker <- function(vsis3_uri, marker_dir = "_targets/s3_markers") {
+  if (is.na(vsis3_uri)) return(NA_character_)
+  
+  dir.create(marker_dir, showWarnings = FALSE, recursive = TRUE)
+  
+  # Get ETag from S3
+  etag <- tryCatch(
+    get_s3_etag(vsis3_uri),
+    error = function(e) {
+      warning(sprintf("Failed to get ETag for %s: %s", vsis3_uri, e$message))
+      return(NA_character_)
+    }
+  )
+  
+  if (is.na(etag)) return(NA_character_)
+  
+  # Create marker file path (hash of S3 path for uniqueness)
+  marker_name <- paste0(digest::digest(vsis3_uri, algo = "md5"), ".txt")
+  marker_file <- file.path(marker_dir, marker_name)
+  
+  # Write BOTH the S3 path and ETag to marker file
+  writeLines(c(vsis3_uri, etag), marker_file)
+  
+  marker_file
+}
+
+#' Read marker file and extract S3 path and ETag
+#'
+#' @param marker_file Character. Path to marker file
+#' @return List with 'path' and 'etag' elements
+read_s3_marker <- function(marker_file) {
+  if (is.na(marker_file) || !file.exists(marker_file)) {
+    return(list(path = NA_character_, etag = NA_character_))
+  }
+  
+  lines <- readLines(marker_file, warn = FALSE)
+  list(
+    path = lines[1],
+    etag = lines[2]
+  )
+}
+
+#' Validate that S3 file matches marker's ETag
+#'
+#' @param marker_file Character. Path to marker file
+#' @return Logical. TRUE if ETag matches, FALSE otherwise
+validate_s3_marker <- function(marker_file) {
+  if (is.na(marker_file) || !file.exists(marker_file)) return(FALSE)
+  
+  marker_data <- read_s3_marker(marker_file)
+  if (is.na(marker_data$path) || is.na(marker_data$etag)) return(FALSE)
+  
+  current_etag <- tryCatch(
+    get_s3_etag(marker_data$path),
+    error = function(e) NA_character_
+  )
+  
+  if (is.na(current_etag)) return(FALSE)
+  
+  marker_data$etag == current_etag
+}
+
+# ==============================================================================
+# TRACKED BUILD FUNCTIONS - WRAPPERS WITH CAS MARKERS
+# ==============================================================================
+
+#' Build image with S3 CAS tracking
+#'
+#' @param assets Data frame of image assets
+#' @param resample Character. Resampling method
+#' @param rootdir Character. Root directory for outputs
+#' @param marker_dir Character. Directory for marker files
+#' @return List with s3_path, marker, and metadata
+build_image_dsn_tracked <- function(assets, resample = "near", 
+                                    rootdir = tempdir(),
+                                    marker_dir = "_targets/s3_markers") {
+  
+  # Build the image (returns tibble with outfile)
+  result <- build_image_dsn(assets, resample = resample, rootdir = rootdir)
+  
+  # Create marker for the S3 file
+  marker_file <- if (!is.na(result$outfile)) {
+    create_s3_marker(result$outfile, marker_dir)
+  } else {
+    NA_character_
+  }
+  
+  # Return result with marker
+  result$marker <- marker_file
+  result
+}
+
+#' Build SCL with S3 CAS tracking
+#'
+#' @param assets Data frame of image assets
+#' @param div Numeric. Optional division parameter
+#' @param root Character. Root directory
+#' @param marker_dir Character. Directory for marker files
+#' @return List with s3_path and marker
+build_scl_dsn_tracked <- function(assets, div = NULL, root = tempdir(),
+                                  marker_dir = "_targets/s3_markers") {
+  
+  # Build the SCL file
+  scl_path <- build_scl_dsn(assets, div = div, root = root)
+  
+  # Create marker for the S3 file
+  marker_file <- if (!is.na(scl_path)) {
+    create_s3_marker(scl_path, marker_dir)
+  } else {
+    NA_character_
+  }
+  
+  # Return both path and marker
+  list(
+    scl_path = scl_path,
+    marker = marker_file
+  )
+}
+
+#' Build PNG with S3 CAS tracking
+#'
+#' @param x Data frame with outfile
+#' @param force Logical. Force rebuild
+#' @param type Character. PNG type
+#' @param marker_dir Character. Directory for marker files
+#' @return List with png_path and marker
+build_image_png_tracked <- function(x, force = FALSE, type,
+                                    marker_dir = "_targets/s3_markers") {
+  
+  # Build the PNG
+  png_path <- build_image_png(x, force = force, type = type)
+  
+  # Create marker for the S3 file
+  marker_file <- if (!is.na(png_path)) {
+    create_s3_marker(png_path, marker_dir)
+  } else {
+    NA_character_
+  }
+  
+  # Return both path and marker
+  list(
+    png_path = png_path,
+    marker = marker_file
+  )
+}
+
+#' Build thumbnail with S3 CAS tracking
+#'
+#' @param dsn Character. Path to source PNG
+#' @param force Logical. Force rebuild
+#' @param marker_dir Character. Directory for marker files
+#' @return List with thumb_path and marker
+build_thumb_tracked <- function(dsn, force = FALSE,
+                                marker_dir = "_targets/s3_markers") {
+  
+  # Build the thumbnail
+  thumb_path <- build_thumb(dsn, force = force)
+  
+  # Create marker for the S3 file
+  marker_file <- if (!is.na(thumb_path)) {
+    create_s3_marker(thumb_path, marker_dir)
+  } else {
+    NA_character_
+  }
+  
+  # Return both path and marker
+  list(
+    thumb_path = thumb_path,
+    marker = marker_file
+  )
+}
+
+# ==============================================================================
+# VALIDATION TARGET HELPERS
+# ==============================================================================
+
+#' Validate all S3 markers in a tracked table
+#'
+#' @param tracked_table Data frame with marker columns
+#' @return Logical. TRUE if all valid, FALSE if any changed/missing
+validate_all_markers <- function(tracked_table) {
+  marker_cols <- grep("marker$", names(tracked_table), value = TRUE)
+  
+  if (length(marker_cols) == 0) return(TRUE)
+  
+  all_valid <- TRUE
+  for (col in marker_cols) {
+    markers <- tracked_table[[col]]
+    valid <- vapply(markers, validate_s3_marker, logical(1))
+    if (any(!valid, na.rm = TRUE)) {
+      n_invalid <- sum(!valid, na.rm = TRUE)
+      warning(sprintf("%s: %d/%d markers invalid or changed", 
+                      col, n_invalid, length(markers)))
+      all_valid <- FALSE
+    }
+  }
+  
+  all_valid
+}
+
+#' Extract S3 paths from tracked results
+#'
+#' @param tracked_results List or data frame with markers
+#' @param path_field Character. Name of path field
+#' @return Character vector of S3 paths
+extract_s3_paths <- function(tracked_results, path_field = "s3_path") {
+  if (is.data.frame(tracked_results)) {
+    return(tracked_results[[path_field]])
+  }
+  
+  if (is.list(tracked_results)) {
+    return(vapply(tracked_results, function(x) {
+      if (is.list(x) && path_field %in% names(x)) {
+        x[[path_field]]
+      } else {
+        NA_character_
+      }
+    }, character(1)))
+  }
+  
+  NA_character_
+}
+
+# ==============================================================================
+# S3-Based Catalog Generation (Separate from Pipeline)
+# ==============================================================================
+# Add to R/functions.R
+# ==============================================================================
+
+#' Build catalog from S3 bucket listing
+#' 
+#' Reads actual files on S3 to build catalog, independent of targets pipeline.
+#' This ensures catalog reflects reality (what exists on S3), not just the
+#' current run's outputs (viewtable).
+#'
+#' @param bucket Character. Bucket name
+#' @param prefix Character. Path prefix 
+#' @param locations_table Data frame. Valid location names (from tabl)
+#' @param warn_unknown Logical. Warn about unknown locations?
+#' @return Data frame with catalog entries
+build_catalog_from_s3 <- function(bucket = "estinel",
+                                  prefix = "sentinel-2-c1-l2a",
+                                  locations_table = NULL,
+                                  warn_unknown = TRUE) {
+  # Install mc binary (first time only)
+  #install_mc()
+  
+  # Configure alias for Pawsey
+  mc_alias_set(
+    alias = "pawsey",
+    endpoint = "projects.pawsey.org.au")
+  message("Listing S3 bucket: ", bucket, "/", prefix)
+  
+  # List all files
+  files <- minioclient::mc_ls(
+    paste0("pawsey", "/", bucket, "/", prefix),
+    recursive = TRUE,
+    details = TRUE
+  )
+  
+  message("Found ", nrow(files), " total objects")
+  
+  # Filter to RGB composites only (not SCL, not PNGs)
+  rgb_files <- files |>
+    dplyr::filter(
+      tools::file_ext(key) == "tif",
+      !grepl("_SCL\\.tif$", key)
+    )
+  
+  message("Found ", nrow(rgb_files), " RGB TIFFs")
+  
+  # Parse location and date from paths
+  # Format: sentinel-2-c1-l2a/2025/12/05/Location_Name_2025-12-05.tif
+  catalog <- rgb_files |>
+    dplyr::mutate(
+      # Extract components from path
+      filename = basename(key),
+      location_date = tools::file_path_sans_ext(filename),
+      # Parse location and solarday
+      location = sub("_[0-9]{4}-[0-9]{2}-[0-9]{2}$", "", location_date),
+      solarday = as.Date(sub(".*_([0-9]{4}-[0-9]{2}-[0-9]{2})$", "\\1", location_date))
+    ) |>
+    dplyr::filter(!is.na(solarday)) |>  # Must have valid date
+    dplyr::mutate(
+      # Build URLs (full paths to S3)
+      outfile = paste0("https://projects.pawsey.org.au/", bucket, "/", key),
+      # Corresponding view PNGs
+      base_path = sub("\\.tif$", "", key),
+      view_q128 = paste0("https://projects.pawsey.org.au/", bucket, "/", base_path, "_q128.png"),
+      view_histeq = paste0("https://projects.pawsey.org.au/", bucket, "/", base_path, "_histeq.png"),
+      view_stretch = paste0("https://projects.pawsey.org.au/", bucket, "/", base_path, "_stretch.png"),
+      # Corresponding thumbnails
+      thumb_base = sub("sentinel-2-c1-l2a/", "thumbs/sentinel-2-c1-l2a/", base_path),
+      thumb_q128 = paste0("https://projects.pawsey.org.au/", bucket, "/", thumb_base, "_q128.png"),
+      thumb_histeq = paste0("https://projects.pawsey.org.au/", bucket, "/", thumb_base, "_histeq.png"),
+      thumb_stretch = paste0("https://projects.pawsey.org.au/", bucket, "/", thumb_base, "_stretch.png")
+    )
+  
+  # Validate locations if table provided
+  if (!is.null(locations_table)) {
+    valid_locations <- unique(locations_table$location)
+    unknown_locations <- setdiff(unique(catalog$location), valid_locations)
+    
+    if (length(unknown_locations) > 0) {
+      if (warn_unknown) {
+        warning(
+          "Found ", length(unknown_locations), " unknown location(s) in S3:\n",
+          paste("  -", unknown_locations, collapse = "\n"),
+          "\nThese will be included in catalog but may be orphaned/test data."
+        )
+      }
+      
+      # Flag unknown locations
+      catalog <- catalog |>
+        dplyr::mutate(
+          location_status = dplyr::if_else(
+            location %in% valid_locations,
+            "valid",
+            "unknown"
+          )
+        )
+    } else {
+      catalog$location_status <- "valid"
+    }
+  } else {
+    catalog$location_status <- "not_checked"
+  }
+  
+  # Select final columns
+  catalog <- catalog |>
+    dplyr::select(
+      location, 
+      solarday, 
+      outfile,
+      view_q128, 
+      view_histeq, 
+      view_stretch,
+      thumb_q128, 
+      thumb_histeq, 
+      thumb_stretch,
+      location_status
+    ) |>
+    dplyr::arrange(location, solarday)
+  
+  message("Built catalog with ", nrow(catalog), " entries")
+  message("Locations: ", length(unique(catalog$location)))
+  message("Date range: ", min(catalog$solarday), " to ", max(catalog$solarday))
+  
+  catalog
+}
+
+#' Audit catalog against locations table
+#'
+#' Helper to inspect what's in S3 vs what's defined in locations
+#'
+#' @param catalog_table Catalog from build_catalog_from_s3()
+#' @param locations_table Valid locations (from tabl)
+#' @return List with audit results
+audit_catalog_locations <- function(catalog_table, locations_table) {
+  
+  catalog_locs <- unique(catalog_table$location)
+  defined_locs <- unique(locations_table$location)
+  
+  list(
+    in_catalog_not_defined = setdiff(catalog_locs, defined_locs),
+    in_defined_not_catalog = setdiff(defined_locs, catalog_locs),
+    in_both = intersect(catalog_locs, defined_locs),
+    summary = data.frame(
+      in_catalog = length(catalog_locs),
+      in_definitions = length(defined_locs),
+      orphaned_in_s3 = length(setdiff(catalog_locs, defined_locs)),
+      missing_imagery = length(setdiff(defined_locs, catalog_locs))
+    )
+  )
 }

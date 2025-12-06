@@ -3,13 +3,13 @@ library(targets)
 library(tarchetypes)
 library(crew)
 pkgs <- c("tarchetypes", "crew", "reproj", "sds", "jsonlite", "vapour", "targets", 
-          "dplyr", "glue", "digest", "gdalraster")
+          "dplyr", "glue", "digest", "gdalraster", "minioclient")
 
 tar_source()
 
 set_gdal_envs()
 
-ncpus <- 30
+ncpus <- 24
 log_directory <- "_targets/logs"
 # Ensure credentials available to workers
 if (Sys.getenv("AWS_ACCESS_KEY_ID") == "") {
@@ -49,13 +49,13 @@ tar_assign({
   # If no marker exists, will start from 2015-01-01
   markers <- read_markers(bucket, spatial_window) |> tar_target()
   
-  # Prepare query specifications with timezone-aware date buffers
-  # Each location gets its own date range based on last_solarday in marker
-  query_specs <- prepare_queries(
+  # Use chunked query preparation
+  query_specs <- prepare_queries_chunked(  # <-- Changed function!
     spatial_window, 
     markers,
     default_start = "2015-01-01",
-    now = Sys.time()
+    now = Sys.time(),
+    chunk_threshold_days = 365  # Bootstrap chunks into years
   ) |> tar_target()
   
   # === STAC QUERIES ===
@@ -76,10 +76,11 @@ tar_assign({
   stac_tables <- process_stac_table2(stac_json_table) |> 
     tar_target(pattern = map(stac_json_table))
   
+  stac_tables_consolidated <- consolidate_chunks(stac_tables) |> tar_target()
+  
   # Filter to only NEW solardays (> last processed)
   # This is critical for incremental processing
-  stac_tables_new <- filter_new_solardays(stac_tables) |> tar_target()
-  
+  stac_tables_new <- filter_new_solardays(stac_tables_consolidated) |> tar_target()
   # Unnest assets into flat table for parallel processing
   images_table <- tidyr::unnest(stac_tables_new |> dplyr::select(-js), 
                                 cols = c(assets)) |> 
@@ -106,9 +107,19 @@ tar_assign({
     tar_target(iteration = "group")
   
   # Build RGB composite GeoTIFFs
-  dsn_table <- build_image_dsn(group_table, rootdir = rootdir) |> 
-    tar_target(pattern = map(group_table))
-  
+  # dsn_table <- build_image_dsn(group_table, rootdir = rootdir) |> 
+  #   tar_target(pattern = map(group_table))
+  # 
+  ## AFTER (with CAS tracking):
+  dsn_table_tracked <- build_image_dsn_tracked(group_table, rootdir = rootdir) |> 
+     tar_target(pattern = map(group_table))
+  # 
+  # Validate markers
+  dsn_validation <- validate_all_markers(dsn_table_tracked) |> tar_target()
+  # 
+  # # Extract paths for downstream use
+  #dsn_table <- extract_s3_paths(dsn_table_tracked, "outfile") |> tar_target()
+  dsn_table <- dsn_table_tracked |> tar_target()
   # Generate PNG views with different stretches
   view_q128 <- build_image_png(dsn_table, force = FALSE, type = "q128") |> 
     tar_target(pattern = map(dsn_table))
@@ -153,9 +164,13 @@ tar_assign({
     dplyr::filter(!is.na(outfile), !is.na(view_q128)) |>
     tar_force(force = TRUE)
   
+  
+  catalog_table <- build_catalog_from_s3(bucket, "sentinel-2-c1-l2a", tabl) |> tar_target()
+  catalog_audit <- audit_catalog_locations(catalog_table, tabl) |> tar_target()
+
   # === WEB INTERFACE ===
   # Write catalog JSON for React frontend
-  json <- write_react_json(viewtable) |> tar_force(force = TRUE)
+  json <- write_react_json(catalog_table) |> tar_force(force = TRUE)
   web <- update_react(json, rootdir) |> tar_force(force = TRUE)
   
   # === UPDATE MARKERS ===
@@ -163,4 +178,7 @@ tar_assign({
   # This enables the next run to start from where we left off
   updated_markers <- update_markers(viewtable) |> tar_target()
   marker_status <- write_markers(bucket, updated_markers) |> tar_target()
+ 
+  
+  
 })
