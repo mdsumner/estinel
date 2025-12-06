@@ -252,7 +252,8 @@ define_locations_table <- function() {
     tibble::tibble(location = "Cape_Denison", lon = 142.6630347, lat = -67.0085726, purpose = list(c("adelie"))), 
     tibble::tibble(location = "Glen_Lusk", lon = 147.19475644052184, lat = -42.81829130353533),
     tibble::tibble(location = "Dolphin_Sands", lon= 148.0999737, lat = -42.0889629, radiusx = 5000, radiusy=5000),
-    tibble::tibble(location = "Fern_Tree", lon = 147.260093482072, lat = -42.922335920324294)
+    tibble::tibble(location = "Fern_Tree", lon = 147.260093482072, lat = -42.922335920324294), 
+    tibble::tibble(location = "Maatsuyker_Island", lon = 146.2619319, lat = -43.6480483)
     , cleanup_table() ) |>  fill_values() |> check_table()
 }
 
