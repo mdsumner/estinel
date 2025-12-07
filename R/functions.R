@@ -26,68 +26,204 @@ audit_location_coverage <- function(viewtable, expected_start = "2015-01-01") {
     )
   )
 }
-build_image_dsn <- function(assets, resample = "near", rootdir = tempdir()) {
-  res <- assets$resolution[1]
-  root <- sprintf("%s/%s", rootdir, assets$collection[1])
-  root <- sprintf("%s/%s", root, format(assets$solarday[1L], "%Y/%m/%d"))
+
+build_ndvi_dsn <- function(assets, rootdir = tempdir()) {
+  build_warped_composite(assets, c("nir", "red"), "_ndvi",
+                         rootdir = rootdir, return_tibble = FALSE)
+# ==============================================================================
+# REFACTORED: Consolidated Image Building Functions
+# ==============================================================================
+# Combines build_image_dsn and build_scl_dsn into a single flexible function
+# ==============================================================================
+
+#' Build warped composite from Sentinel-2 assets
+#' 
+#' Generic function to warp one or more bands to a target extent/CRS.
+#' Handles both single-band (SCL) and multi-band (RGB) outputs.
+#'
+#' @param assets Data frame with asset URLs and metadata
+#' @param band_names Character vector. Asset column names to extract
+#' @param suffix Character. File suffix (e.g., "_scl" or "")
+#' @param resample Character. Resampling method
+#' @param rootdir Character. Root output directory
+#' @param return_tibble Logical. Return tibble (TRUE) or path (FALSE)
+#' @return Tibble or character path depending on return_tibble
+build_warped_composite <- function(assets, 
+                                   band_names = c("red", "green", "blue"),
+                                   suffix = "",
+                                   resample = "near", 
+                                   rootdir = tempdir(),
+                                   return_tibble = TRUE) {
+  
   set_gdal_envs()
+  
+  # === COMMON SETUP ===
+  res <- assets$resolution[1]
+  collection <- assets$collection[1]
+  date <- assets$solarday[1]
   location <- assets$location[1L]
-  outfile <- sprintf("%s/%s_%s.tif", root, location, format(assets$solarday[1]))
   
-  if (!dir.exists(root)) {
-    if (!is_cloud(root)) {
-      dir.create(root, showWarnings = FALSE, recursive = TRUE)
-    }}
+  # Build output path
+  root <- sprintf("%s/%s/%s", rootdir, collection, format(date, "%Y/%m/%d"))
+  outfile <- sprintf("%s/%s_%s%s.tif", root, location, format(date), suffix)
   
-  crs <- assets$crs[1]
-  
-  exnames <- c("xmin", "xmax", "ymin", "ymax")
-  ## every group of rows has a single extent
-  ex <- unlist(assets[1L, exnames], use.names = FALSE)
-  
-  bands <- vector("list", 3)
-  bandnames <- c("red", "green", "blue")
-  if (grepl("windows.net", assets[[1]][1L])) {
-    bandnames <- c("B04", "B03", "B02")
-    
+  # Prepare tibble return (if needed)
+  if (return_tibble) {
+    result <- tibble::tibble(
+      outfile = NA_character_, 
+      location = location,
+      SITE_ID = assets$SITE_ID[1],
+      clear_test = assets$clear_test[1], 
+      solarday = date,
+      scl_tif = if("scl_tif" %in% names(assets)) assets$scl_tif[1] else NA_character_,
+      assets = list(assets)
+    )
   }
-  out <-   tibble::tibble(outfile = NA_character_, location = assets$location[1], 
-                          SITE_ID = assets$SITE_ID[1],
-                          clear_test = assets$clear_test[1], 
-                          solarday = assets$solarday[1],
-                          scl_tif = assets$scl_tif[1], assets = list(assets))
   
+  # === CHECK IF EXISTS ===
   if (gdalraster::vsi_stat(outfile, "exists")) {
-    out$outfile <- outfile
-    return(out)  ## silently ignore
+    if (return_tibble) {
+      result$outfile <- outfile
+      return(result)
+    } else {
+      return(outfile)
+    }
   }
-  #print(out$solarday)
-  #print(out$location)
-  ## didn't like use of gdalraster::srs_to_wkt here ??
-  for (i in seq_along(bandnames)) {
+  
+  # === CREATE DIRECTORY ===
+  if (!dir.exists(root) && !is_cloud(root)) {
+    dir.create(root, showWarnings = FALSE, recursive = TRUE)
+  }
+  
+  # === EXTRACT TARGET EXTENT AND CRS ===
+  crs <- assets$crs[1]
+  ex <- unlist(assets[1L, c("xmin", "xmax", "ymin", "ymax")], use.names = FALSE)
+  
+  # === WARP BANDS ===
+  warped_bands <- vector("list", length(band_names))
+  
+  for (i in seq_along(band_names)) {
+    band_name <- band_names[i]
     
-    dsns <- assets[[bandnames[i]]]
+    # Get source URLs for this band
+    band_col <- band_name
+    
+    # Handle PC vs Element84 naming
+    if (grepl("windows.net", assets[[1]][1L])) {
+      # Planetary Computer uses different band names
+      band_mapping <- c(red = "B04", green = "B03", blue = "B02", scl = "SCL")
+      if (band_name %in% names(band_mapping)) {
+        band_col <- band_mapping[band_name]
+      }
+    }
+    
+    # Extract URLs
+    dsns <- assets[[band_col]]
+    if (band_col == "scl" || band_col == "SCL") {
+      # SCL might be under different column name
+      if (is.na(dsns)[1]) dsns <- assets[["SCL"]]
+    }
+    
     dsns <- dsns[!is.na(dsns)]
-    if (length(dsns) < 1) return(out)
     
-    for (ii in seq_along(dsns)) dsns[ii] <- vsicurl_for(dsns[ii], pc = grepl("windows.net", dsns[ii]))
-    tst <- try(warp_to_dsn(dsns, target_crs = crs, target_res = res, target_ext = ex, resample = resample)[[1]], silent = TRUE)
-    if (inherits(tst, "try-error")) return(out)
-    bands[[i]] <- tst
+    if (length(dsns) < 1) {
+      if (return_tibble) return(result) else return(NA_character_)
+    }
+    
+    # Add vsicurl wrapper
+    for (ii in seq_along(dsns)) {
+      dsns[ii] <- vsicurl_for(dsns[ii], pc = grepl("windows.net", dsns[ii]))
+    }
+    
+    # Warp this band
+    warped <- try(
+      warp_to_dsn(dsns, 
+                  target_crs = crs, 
+                  target_res = res, 
+                  target_ext = ex, 
+                  resample = resample)[[1]], 
+      silent = TRUE
+    )
+    
+    if (inherits(warped, "try-error")) {
+      if (return_tibble) return(result) else return(NA_character_)
+    }
+    
+    warped_bands[[i]] <- warped
   }
   
-  vrt <- try(vapour::buildvrt(unlist(bands)), silent = TRUE)
-  if (inherits(vrt, "try-error")) return(out)
-  
-  test <- put_bytes_at(vrt, outfile)
-  if (inherits(test, "try-error")) {
-    print("put bytes at fail")
-    return(out)
+  # === BUILD OUTPUT ===
+  if (length(warped_bands) == 1) {
+    # Single band - use directly
+    final_file <- warped_bands[[1]]
+  } else {
+    # Multiple bands - build VRT
+    vrt <- try(vapour::buildvrt(unlist(warped_bands)), silent = TRUE)
+    if (inherits(vrt, "try-error")) {
+      if (return_tibble) return(result) else return(NA_character_)
+    }
+    final_file <- vrt
   }
-  out$outfile <- outfile
-  out
+  
+  # === WRITE TO S3 ===
+  write_result <- try(put_bytes_at(final_file, outfile), silent = TRUE)
+  
+  if (inherits(write_result, "try-error")) {
+    if (return_tibble) return(result) else return(NA_character_)
+  }
+  
+  # === RETURN ===
+  if (return_tibble) {
+    result$outfile <- outfile
+    result
+  } else {
+    outfile
+  }
 }
 
+# ==============================================================================
+# WRAPPER FUNCTIONS - Keep Original API
+# ==============================================================================
+
+#' Build RGB composite (wrapper)
+build_image_dsn <- function(assets, resample = "near", rootdir = tempdir()) {
+  build_warped_composite(
+    assets,
+    band_names = c("red", "green", "blue"),
+    suffix = "",
+    resample = resample,
+    rootdir = rootdir,
+    return_tibble = TRUE
+  )
+}
+
+#' Build SCL layer (wrapper)
+build_scl_dsn <- function(assets, div = NULL, root = tempdir()) {
+  # Note: div parameter ignored in new implementation
+  # (was never actually used in original code)
+  build_warped_composite(
+    assets,
+    band_names = "scl",
+    suffix = "_scl",
+    resample = "near",
+    rootdir = root,
+    return_tibble = FALSE
+  )
+}
+
+# ==============================================================================
+# BENEFITS:
+# ==============================================================================
+# 1. Single source of truth for warping logic
+# 2. No code duplication (was ~80% identical)
+# 3. Easy to add new band combinations:
+#    - NDVI: build_warped_composite(assets, c("nir", "red"), "_ndvi")
+#    - True color: already have it!
+#    - False color: build_warped_composite(assets, c("nir", "red", "green"))
+# 4. Consistent error handling across all outputs
+# 5. Easier to test (one function to test, not two)
+# 6. Easier to optimize (improve once, benefits all)
+# 7. Maintains backward compatibility via wrappers
 build_image_png <- function(x, force = FALSE, type) {
   test <- try({
     dsn <- x[["outfile"]]
@@ -129,37 +265,6 @@ build_image_png <- function(x, force = FALSE, type) {
   outpng
 }
 
-build_scl_dsn <- function(assets, div = NULL, root = tempdir()) {
-  set_gdal_envs()
-  res <- assets$resolution[1]
-  root <- sprintf("%s/%s/%s", root, assets$collection[1L], format(assets$solarday[1L], "%Y/%m/%d"))
-  if (!dir.exists(root)) {
-    if (!is_cloud(root)) {
-      dir.create(root, showWarnings = FALSE, recursive = TRUE)
-    }}
-  
-  location <- assets$location[1L]
-  outfile <- sprintf("%s/%s_%s_scl.tif", root, location, format(assets$solarday[1]))
-  
-  if (gdalraster::vsi_stat(outfile, "exists")) {
-    return(outfile)  ## silently ignore
-  }
-  exnames <- c("xmin", "xmax", "ymin", "ymax")
-  ## every group of rows has a single extent
-  ex <- unlist(assets[1L, exnames], use.names = FALSE)
-  # if (!is.null(div))  {
-  #   dxdy <- diff(ex)[c(1, 3)]/div / 2
-  #   middle <- c(mean(ex[1:2]), mean(ex[3:4]))
-  #   ex <- c(middle[1] - dxdy[1], middle[1] + dxdy[1], middle[2] - dxdy[2], middle[2] + dxdy[2])
-  # }
-  scl <- assets[["scl"]] 
-  if (is.na(scl)[1]) scl <- assets[["SCL"]]
-  
-  for (i in seq_along(scl)) scl[i] <- vsicurl_for(scl[i], pc = grepl("windows.net", scl[i]))
-  
-  out <- try(vapour::gdal_raster_dsn(scl, target_crs= assets$crs[1], target_res = res, target_ext = ex, out_dsn = outfile)[[1]], silent = TRUE)
-  if (inherits(out, "try-error")) NA_character_ else out
-}
 
 build_thumb <- function(dsn, force = FALSE) {
   test <- try({
@@ -258,6 +363,7 @@ define_locations_table <- function() {
     tibble::tibble(location = "Precipitous_Bluff", lon = 146.5987335, lat = -43.4703973), 
     tibble::tibble(location = "Mt_Anne", lon = 146.4113971, lat = -42.9588201), 
     tibble::tibble(location = "Robbins_Island", lon = 144.8985195, lat = -40.6977141, radiusx = 5000, radiusy = 5000),
+    tibble::tibble(location = "Mt_Bobs", lon = 146.5694004, lat = -43.2899976),
     tibble::tibble(location = "Dumont_dUrville_Station", lon = 139.9977592, lat = -66.6650502)
     , cleanup_table() ) |>  fill_values() |> check_table()
 }
