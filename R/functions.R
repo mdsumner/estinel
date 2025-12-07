@@ -30,6 +30,7 @@ audit_location_coverage <- function(viewtable, expected_start = "2015-01-01") {
 build_ndvi_dsn <- function(assets, rootdir = tempdir()) {
   build_warped_composite(assets, c("nir", "red"), "_ndvi",
                          rootdir = rootdir, return_tibble = FALSE)
+}
 # ==============================================================================
 # REFACTORED: Consolidated Image Building Functions
 # ==============================================================================
