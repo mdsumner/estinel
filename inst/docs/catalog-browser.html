@@ -1042,6 +1042,50 @@ ${url}`);
         }, 100);
       }, [data, selectedLocation?.id]);
 
+      // Update selected location when purpose filters change
+      useEffect(() => {
+        if (!data || !selectedLocation) return;
+        
+        const sortedLocations = getSortedLocations();
+        
+        // If current location is not in filtered list, switch to first one
+        const isCurrentLocationVisible = sortedLocations.some(loc => loc.id === selectedLocation.id);
+        
+        if (!isCurrentLocationVisible && sortedLocations.length > 0) {
+          const newLocation = sortedLocations[0];
+          setSelectedLocation(newLocation);
+          const lastImageIndex = newLocation.images.length - 1;
+          setCurrentIndex(lastImageIndex);
+          setCompareIndices([
+            Math.max(0, lastImageIndex - 1), 
+            lastImageIndex
+          ]);
+        }
+      }, [purposeFilters, data]);
+
+
+      // Update selected location when purpose filters change
+      useEffect(() => {
+        if (!data || !selectedLocation) return;
+        
+        const sortedLocations = getSortedLocations();
+        
+        // If current location is not in filtered list, switch to first one
+        const isCurrentLocationVisible = sortedLocations.some(loc => loc.id === selectedLocation.id);
+        
+        if (!isCurrentLocationVisible && sortedLocations.length > 0) {
+          const newLocation = sortedLocations[0];
+          setSelectedLocation(newLocation);
+          const lastImageIndex = newLocation.images.length - 1;
+          setCurrentIndex(lastImageIndex);
+          setCompareIndices([
+            Math.max(0, lastImageIndex - 1), 
+            lastImageIndex
+          ]);
+        }
+      }, [purposeFilters, data]);
+
+
 
       const goToNext = () => {
         if (viewMode === 'single') {
