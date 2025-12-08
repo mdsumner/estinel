@@ -28,7 +28,7 @@
     const { useState, useEffect } = React;
 
     // UPDATE THIS URL to point to your JSON catalog on Pawsey
-    const CATALOG_URL = 'https://projects.pawsey.org.au/estinel/catalog/image-catalog.json';
+    const CATALOG_URL = 'image-catalog.json';
 
     // Sample data for testing (remove this when using real catalog)
     const SAMPLE_DATA = {
@@ -888,6 +888,25 @@
                           >
                             Clear filters (show all)
                           </div>
+                          
+                              <div className="text-xs text-gray-400 px-2 py-1 border-t border-gray-600 pt-2 mt-1">
+      <div>{data.locations.length} locations</div>
+      <div>
+        {(() => {
+          if (purposeFilters.length === 0) {
+            return `${data.locations.length} active`;
+          }
+          const activeCount = data.locations.filter(loc => {
+            const locPurposes = loc.purpose 
+              ? (Array.isArray(loc.purpose) ? loc.purpose : [loc.purpose])
+              : ['(undefined)'];
+            return locPurposes.some(p => purposeFilters.includes(p));
+          }).length;
+          return `${activeCount} active`;
+        })()}
+      </div>
+    </div>
+    
                           {getAllPurposes().map(purpose => (
                             <label key={purpose} className="flex items-center gap-2 hover:bg-gray-600 p-2 rounded cursor-pointer">
                               <input
