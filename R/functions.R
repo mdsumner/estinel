@@ -1410,3 +1410,61 @@ write_react_json <- function(viewtable) {
   writeLines(jstext, outfile)
   outfile
 }
+
+
+#' Upload catalog JSON to GitHub Release with compression
+#'
+#' @param json_file Character. Path to catalog JSON
+#' @param repo Character. GitHub repo (owner/name)
+#' @param tag Character. Release tag (default: "catalog-data")
+#' @return Logical. TRUE if successful
+upload_catalog_to_release <- function(json_file, 
+                                      repo = "mdsumner/estinel",
+                                      tag = "catalog-data") {
+  
+  if (!file.exists(json_file)) {
+    stop("Catalog file not found: ", json_file)
+  }
+  
+  # Compress the JSON (40MB → ~2-5MB typically)
+  compressed_file <- paste0(tools::file_path_sans_ext(json_file), ".json.gz")
+  
+  message("Compressing catalog: ", json_file)
+  con_in <- file(json_file, "r")
+  con_out <- gzfile(compressed_file, "w")
+  writeLines(readLines(con_in), con_out)
+  close(con_in)
+  close(con_out)
+  
+  # Get file sizes
+  original_size <- file.size(json_file) / 1024^2  # MB
+  compressed_size <- file.size(compressed_file) / 1024^2  # MB
+  compression_ratio <- (1 - compressed_size/original_size) * 100
+  
+  message(sprintf("Original: %.1f MB, Compressed: %.1f MB (%.1f%% smaller)", 
+                  original_size, compressed_size, compression_ratio))
+  
+  # Upload to GitHub Release
+  message("Uploading to GitHub Release: ", tag)
+  
+  tryCatch({
+    piggyback::pb_upload(
+      file = compressed_file,
+      repo = repo,
+      tag = tag,
+      overwrite = TRUE  # Replace existing file
+    )
+    
+    message("✓ Upload successful!")
+    message("Download URL: https://github.com/", repo, "/releases/download/", tag, "/", basename(compressed_file))
+    
+    # Clean up compressed file
+    unlink(compressed_file)
+    
+    TRUE
+  }, error = function(e) {
+    warning("Upload failed: ", e$message)
+    unlink(compressed_file)
+    FALSE
+  })
+}

@@ -170,8 +170,8 @@ tar_assign({
 
   # === WEB INTERFACE ===
   # Write catalog JSON for React frontend
-  json <- write_react_json(catalog_table) |> tar_force(force = TRUE)
-  web <- update_react(json, rootdir) |> tar_force(force = TRUE)
+  pagejson <- write_react_json(catalog_table) |> tar_force(force = TRUE)
+  web <- update_react(pagejson, rootdir) |> tar_force(force = TRUE)
   
   # === UPDATE MARKERS ===
   # After successful processing, update markers with latest solarday
@@ -180,5 +180,14 @@ tar_assign({
   marker_status <- write_markers(bucket, updated_markers) |> tar_target()
  
   
+  # Upload catalog to GitHub Release (replaces git tracking)
+  catalog_release <- upload_catalog_to_release(
+    pagejson, 
+    repo = "mdsumner/estinel",
+    tag = "catalog-data"
+  ) |> 
+    tar_target(
+      cue = tar_cue(mode = "always")  # Always upload when catalog changes
+    )
   
 })
