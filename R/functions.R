@@ -335,6 +335,7 @@ cleanup_table <- function() {
 define_locations_table <- function() {
   dplyr::bind_rows(
     tibble::tibble(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy = 3000, purpose = "tasmania"), 
+    tibble::tibble(location = "Kingston_HQ", lon = 147.2919, lat = -42.9866, purpose = "tasmania,base"),
     tibble::tibble(location = "Davis_Station", lon = 77.9675, lat = -68.5767, purpose = "base,antarctica"), 
     tibble::tibble(location = "Casey_Station", lon = 110.5267, lat = -66.2825, purpose = "base,antarctica"), 
     tibble::tibble(location = "Casey_Station_2", lon = 110.5267, lat = -66.2825, radiusx = 5000, radiusy = 5000, purpose = "base,casey,antarctica,island"), 
@@ -364,7 +365,11 @@ define_locations_table <- function() {
     tibble::tibble(location = "Mt_Bobs", lon = 146.5694, lat = -43.2900, purpose = "tasmania"),
     tibble::tibble(location = "Tasman_Island", lon = 148.0045, lat = -43.2388, purpose = "tasmania,island,cetacean"),
     tibble::tibble(location = "Dumont_dUrville_Station", lon = 139.9978, lat = -66.6651, purpose = "antarctica"), 
-    tibble::tibble(location = "Pearson_Sandhills", lon = 131.1440, lat = -31.4633, purpose = "cetacean"),
+    tibble::tibble(location = "Pearson_Sandhills", lon = 131.1440, lat = -31.4633, purpose = "cetacean,southaustralia"),
+    tibble::tibble(location = "Rapa_Nui", lon = -109.4292, lat = -27.1984, purpose = "cetacean,island,chile"),
+    tibble::tibble(location = "Maui", lon = -156.46262, lat = 20.6366, purpose = "cetacean,island,hawaii"),
+    # Eyjafjörður Whale Research Site
+    tibble::tibble(location = "Eyjafjordur", lon = -18.2,  lat =65.85, radiusx = 5000, radiusy = 5000, purpose = "cetacean,island,iceland"),
     cleanup_table()) |> fill_values() |> check_table()
 }
 
