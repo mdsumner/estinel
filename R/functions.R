@@ -328,45 +328,44 @@ cleanup_table <- function() {
   x$location <- trimws(x$location)
   x$location <- gsub("\\s+", "_", x$location, perl = TRUE)
   x$location <- gsub("é", "e", x$location)
-  x$purpose <- as.list(rep("emperor", nrow(x)))
+  x$purpose <- "emperor"
   x
 }
 
 define_locations_table <- function() {
   dplyr::bind_rows(
-    ## first row is special, we include resolution and radiusx/y these are copied throughout if NA
-    ## but other rows may have this value set also
-    tibble::tibble(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy=3000, purpose = list("none")), 
-    tibble::tibble(location = "Davis_Station", lon = c(77 + 58/60 + 3/3600), lat = -(68 + 34/60 + 36/3600), purpose = list(c("base"))), 
-    tibble::tibble(location = "Casey_Station", lon = c(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), purpose = list(c("base"))), 
-    tibble::tibble(location = "Casey_Station_2", lon = c(110 + 31/60 + 36/3600), lat =  -(66 + 16/60 + 57/3600), radiusx = 5000, radiusy = 5000, purpose = list(c("base"))), 
-    tibble::tibble(location = "Heard_Island_Atlas_Cove", lon = 73.38681, lat = -53.024348, purpose = list(c("base", "heard"))),
-    tibble::tibble(location = "Heard_Island_Atlas_Cove_2", lon = 73.38681, lat = -53.024348, radiusx = 5000, radiusy = 5000, purpose = list(c("base", "heard"))),
-    tibble::tibble(location = "Heard_Island_60m", lon = 73.50281, lat= -53.09143, resolution = 60, radiusx = 24000, radiusy=14000, purpose = list(c("heard"))),
-    tibble::tibble(location = "Heard_Island_Big_Ben", lon = 73.516667, lat = -53.1, purpose = list(c("heard"))), 
-    tibble::tibble(location = "Heard_Island_Spit_Bay", lon = 73.71887, lat = -53.1141, purpose = list(c("heard"))),
-    tibble::tibble(location = "Heard_Island_Spit_Bay_2", lon = 73.71887, lat = -53.1141, radiusx = 5000, radiusy = 5000, purpose = list(c("heard"))),
-    tibble::tibble(location = "Heard_Island_Compton_Lagoon", lon = 73.610672, lat = -53.058079, purpose = list(c("heard"))),
-    
-    tibble::tibble(location = "Mawson_Station", lon = 62 + 52/60 + 27/3600, lat = -(67 + 36/60 + 12/3600), purpose = list(c("base"))),
-    tibble::tibble(location = "Macquarie_Island_Station", lon = 158.93835, lat = -54.49871, purpose = list(c("base"))),
-    tibble::tibble(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = list(c("macquarie"))),
-    tibble::tibble(location = "Scullin_Monolith", lon = 66.71886, lat = -67.79353), 
-    tibble::tibble(location = "Concordia_Station", lon = 123+19/60+56/3600, lat = -(75+05/60+59/3600) ), 
-    tibble::tibble(location = "Dome_C_North", lon = 122.52059, lat = -75.34132, purpose = list(c("base"))), 
-    tibble::tibble(location = "Bechervaise_Island", lon = 62.817, lat = -67.583, purpose = list(c("adelie"))),
-    tibble::tibble(location = "Cape_Denison", lon = 142.6630347, lat = -67.0085726, purpose = list(c("adelie"))), 
-    tibble::tibble(location = "Glen_Lusk", lon = 147.19475644052184, lat = -42.81829130353533),
-    tibble::tibble(location = "Dolphin_Sands", lon= 148.0999737, lat = -42.0889629, radiusx = 5000, radiusy=5000),
-    tibble::tibble(location = "Fern_Tree", lon = 147.260093482072, lat = -42.922335920324294), 
-    tibble::tibble(location = "Maatsuyker_Island", lon = 146.2619319, lat = -43.6480483), 
-    tibble::tibble(location = "Pedra_Branca_Eddystone", lon = 146.9831392, lat = -43.852779), 
-    tibble::tibble(location = "Precipitous_Bluff", lon = 146.5987335, lat = -43.4703973), 
-    tibble::tibble(location = "Mt_Anne", lon = 146.4113971, lat = -42.9588201), 
-    tibble::tibble(location = "Robbins_Island", lon = 144.8985195, lat = -40.6977141, radiusx = 5000, radiusy = 5000),
-    tibble::tibble(location = "Mt_Bobs", lon = 146.5694004, lat = -43.2899976),
-    tibble::tibble(location = "Dumont_dUrville_Station", lon = 139.9977592, lat = -66.6650502)
-    , cleanup_table() ) |>  fill_values() |> check_table()
+    tibble::tibble(location = "Hobart", lon = 147.3257, lat = -42.8826, resolution = 10, radiusx = 3000, radiusy = 3000, purpose = "tasmania"), 
+    tibble::tibble(location = "Davis_Station", lon = 77.9675, lat = -68.5767, purpose = "base,antarctica"), 
+    tibble::tibble(location = "Casey_Station", lon = 110.5267, lat = -66.2825, purpose = "base,antarctica"), 
+    tibble::tibble(location = "Casey_Station_2", lon = 110.5267, lat = -66.2825, radiusx = 5000, radiusy = 5000, purpose = "base,casey,antarctica,island"), 
+    tibble::tibble(location = "Heard_Island_Atlas_Cove", lon = 73.3868, lat = -53.0243, purpose = "base,heard,subantarctic,island"),
+    tibble::tibble(location = "Heard_Island_Atlas_Cove_2", lon = 73.3868, lat = -53.0243, radiusx = 5000, radiusy = 5000, purpose = "base,heard,island"),
+    tibble::tibble(location = "Heard_Island_60m", lon = 73.5028, lat = -53.0914, resolution = 60, radiusx = 24000, radiusy = 14000, purpose = "heard,subantarctic,island"),
+    tibble::tibble(location = "Heard_Island_Big_Ben", lon = 73.5167, lat = -53.1000, purpose = "heard,subantarctic,island"), 
+    tibble::tibble(location = "Heard_Island_Spit_Bay", lon = 73.7189, lat = -53.1141, purpose = "heard,subantarctic,island"),
+    tibble::tibble(location = "Heard_Island_Spit_Bay_2", lon = 73.7189, lat = -53.1141, radiusx = 5000, radiusy = 5000, purpose = "heard,subantarctic,island"),
+    tibble::tibble(location = "Heard_Island_Compton_Lagoon", lon = 73.6107, lat = -53.0581, purpose = "heard,island"),
+    tibble::tibble(location = "Mawson_Station", lon = 62.8742, lat = -67.6033, purpose = "base,mawson,antarctica"),
+    tibble::tibble(location = "Macquarie_Island_Station", lon = 158.9384, lat = -54.4987, purpose = "base,macquarie,subantarctic,island"),
+    tibble::tibble(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = "macquarie,subantarctic,island"),
+    tibble::tibble(location = "Scullin_Monolith", lon = 66.7189, lat = -67.7935, purpose = "antarctica"), 
+    tibble::tibble(location = "Concordia_Station", lon = 123.3322, lat = -75.0997, purpose = "antarctica"), 
+    tibble::tibble(location = "Dome_C_North", lon = 122.5206, lat = -75.3413, purpose = "base,antarctica"), 
+    tibble::tibble(location = "Bechervaise_Island", lon = 62.8170, lat = -67.5830, purpose = "adelie,antarctica,island"),
+    tibble::tibble(location = "Cape_Denison", lon = 142.6630, lat = -67.0086, purpose = "adelie,antarctica"), 
+    tibble::tibble(location = "Glen_Lusk", lon = 147.1948, lat = -42.8183, purpose = "tasmania"),
+    tibble::tibble(location = "Dolphin_Sands", lon = 148.1000, lat = -42.0890, radiusx = 5000, radiusy = 5000, purpose = "tasmania"),
+    tibble::tibble(location = "Fern_Tree", lon = 147.2601, lat = -42.9223, purpose = "tasmania"), 
+    tibble::tibble(location = "Maatsuyker_Island", lon = 146.2619, lat = -43.6480, purpose = "tasmania,island"), 
+    tibble::tibble(location = "Pedra_Branca_Eddystone", lon = 146.9831, lat = -43.8528, purpose = "tasmania"), 
+    tibble::tibble(location = "Precipitous_Bluff", lon = 146.5987, lat = -43.4704, purpose = "tasmania"), 
+    tibble::tibble(location = "Mt_Anne", lon = 146.4114, lat = -42.9588, purpose = "tasmania"), 
+    tibble::tibble(location = "Robbins_Island", lon = 144.8985, lat = -40.6977, radiusx = 5000, radiusy = 5000, purpose = "tasmania,island"),
+    tibble::tibble(location = "Mt_Bobs", lon = 146.5694, lat = -43.2900, purpose = "tasmania"),
+    tibble::tibble(location = "Tasman_Island", lon = 148.0045, lat = -43.2388, purpose = "tasmania,island,cetacean"),
+    tibble::tibble(location = "Dumont_dUrville_Station", lon = 139.9978, lat = -66.6651, purpose = "antarctica"), 
+    tibble::tibble(location = "Pearson_Sandhills", lon = 131.1440, lat = -31.4633, purpose = "cetacean"),
+    cleanup_table()) |> fill_values() |> check_table()
 }
 
 fill_values <- function(x) {
@@ -374,11 +373,9 @@ fill_values <- function(x) {
     bad <- is.na(x[[var]])
     x[[var]][bad] <- x[[var]][1]  ## better not be NA
   }
-  for (i in seq_along(x$purpose)) {
-    if (all(is.na(x$purpose[[i]])) | is.null(x$purpose[[i]])) {
-      x$purpose[[i]] <- "none"
-    }
-  }
+  badpurp <- is.na(x$purpose)
+  if (any(badpurp))  x$purpose[badpurp] <- "none"
+
   x$SITE_ID <- sprintf("site_%s", unlist(lapply(x$location, digest::digest, "murmur32")))
   x
 }
@@ -419,19 +416,6 @@ getstac_json <- function(x, trigger) {
   x
 }
 
-getstac_query <- function(x, limit = 300) {
-  #stopifnot(length(provider) == length(collections))
-  llnames <- c("lonmin", "lonmax", "latmin", "latmax")
-  dtnames <- c("start", "end")
-  llex <- unlist(x[llnames])
-  date <- c(x[[dtnames[1]]], x[[dtnames[2]]])
-  
-  #href <- character(length(provider))
-  #for (i in seq_along(href)) {
-  href <- sds::stacit(llex, date, limit = limit, collections = x$collection[1L], provider = x$provider[1L])
-  x$query <- href
-  x
-}
 
 getstac_query_adaptive <- function(query_specs, provider, collection, limit = 300) {
   llnames <- c("lonmin", "lonmax", "latmin", "latmax")
@@ -551,53 +535,7 @@ mkextent <- function(lon, lat, bufy = 3000, bufx = NULL, cosine = FALSE) {
   c(-bufx, bufx, -bufy, bufy)
 }
 
-modify_qtable_yearly <- function(x, startdate, enddate = Sys.time(), provider, collection) {
-  stopifnot(length(provider) == length(collection))
-  
-  year <- as.integer(format(as.Date(enddate), "%Y"))
-  starts <- seq(as.Date(startdate), as.Date(sprintf("%i-01-01", year)), by = "1 year")
-  ends <- seq(starts[2] -1, length.out = length(starts), by = "1 year")
-  xx <- dplyr::bind_rows(lapply(split(x, 1:nrow(x)), function(.x) dplyr::slice(.x, rep(1, length(starts))) |> dplyr::mutate(start = starts, end = ends)))
-  
-  out <- vector("list", length(provider))
-  for (i in seq_along(provider)) {
-    xi <- xx
-    xi[["provider"]] <- provider[i]
-    xi[["collection"]] <- collection[i]
-    out[[i]] <- xi
-  }
-  do.call(rbind, out)
-  
-}
 
-prepare_queries <- function(spatial_window, markers, 
-                            default_start = "2015-01-01", 
-                            now = Sys.time()) {
-  
-  query_table <- dplyr::left_join(spatial_window, markers, 
-                                  by = c("SITE_ID", "location"))
-  
-  query_table$start_solarday <- dplyr::if_else(
-    is.na(query_table$last_solarday),
-    as.Date(default_start),
-    query_table$last_solarday + 1
-  )
-  
-  end_solarday <- as.Date(now)
-  
-  query_table$offset_hours <- query_table$lon / 15
-  query_table$buffer_hours <- abs(query_table$offset_hours) + 12
-  
-  query_table$query_start_utc <- as.POSIXct(query_table$start_solarday, tz = "UTC") - 
-    (query_table$buffer_hours * 3600)
-  query_table$query_end_utc <- as.POSIXct(end_solarday + 1, tz = "UTC") + 
-    (query_table$buffer_hours * 3600)
-  
-  query_table$start <- format(query_table$query_start_utc, "%Y-%m-%dT%H:%M:%SZ")
-  query_table$end <- format(query_table$query_end_utc, "%Y-%m-%dT%H:%M:%SZ")
-  
-  query_table
-}
 # ==============================================================================
 # WORKAROUND: Smart Query Chunking for Bootstrap + Markers
 # ==============================================================================
@@ -743,7 +681,7 @@ consolidate_chunks <- function(stac_tables) {
       resolution = dplyr::first(resolution),
       radiusx = dplyr::first(radiusx),
       radiusy = dplyr::first(radiusy),
-      purpose = list(dplyr::first(purpose)),
+      purpose = dplyr::first(purpose),
       crs = dplyr::first(crs),
       lonmin = dplyr::first(lonmin),
       lonmax = dplyr::first(lonmax),
@@ -1344,7 +1282,7 @@ build_catalog_from_s3 <- function(bucket = "estinel",
   # JOIN to get SITE_ID
   catalog <- catalog |>
     dplyr::left_join(
-      locations_table |> dplyr::select(location, SITE_ID),
+      locations_table |> dplyr::select(location, SITE_ID, purpose),
       by = "location"
     )
   
@@ -1397,17 +1335,7 @@ audit_catalog_locations <- function(catalog_table, locations_table) {
 
 write_react_json <- function(viewtable) {
   collection <- "sentinel-2-c1-l2a"
-  SITE_ID_template <- "site_%04i"
-  # {
-  #   "url": {
-  #     "view": "https://.../image.png",
-  #     "view_hist": "https://.../image_hist.png"
-  #   },
-  #   "thumbnail": {
-  #     "view": "https://.../thumbs/image.png",
-  #     "view_hist": "https://.../thumbs/image_hist.png"
-  #   }
-  # }
+  
   url_template <- 
     '"url": {
            "view_q128": "https://projects.pawsey.org.au/estinel/<<IMAGE_ID>>_q128.png",
@@ -1419,6 +1347,7 @@ write_react_json <- function(viewtable) {
            "view_hist": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_histeq.png",
            "view_stretch": "https://projects.pawsey.org.au/estinel/thumbs/<<IMAGE_ID>>_stretch.png"
          }'
+  
   image_template <- 
     '{
           "id": "<<IMAGE_ID>>",
@@ -1427,15 +1356,17 @@ write_react_json <- function(viewtable) {
           "date": "<<DATE>>"
 }'
   
-  
+  # UPDATED: Added purpose array
   site_template <- 
     '{
     "id": "<<SITE_ID>>",
     "name": "<<SITE_NAME>>",
+    "purpose": <<PURPOSE_JSON>>,
     "images": [
       %s
     ]
 }'
+  
   locations <- unique(viewtable$location)
   sites <- character()
   
@@ -1443,8 +1374,18 @@ write_react_json <- function(viewtable) {
     
     imagetable <- dplyr::filter(viewtable, location == locations[j])
     SITE_NAME <- imagetable$location[j]
-    #SITE_ID <- sprintf(SITE_ID_template, j)
     SITE_ID <- imagetable$SITE_ID[1]
+    
+    # ADDED: Parse CSV string to JSON array
+    PURPOSE_JSON <- if ("purpose" %in% names(imagetable) && !is.na(imagetable$purpose[1])) {
+      # Split CSV string: "base,heard" -> c("base", "heard")
+      purpose_vec <- trimws(strsplit(imagetable$purpose[1], ",")[[1]])
+      # Convert to JSON array: ["base", "heard"]
+      jsonlite::toJSON(purpose_vec, auto_unbox = FALSE)
+    } else {
+      '["none"]'  # Default JSON array
+    }
+    
     images <- character()
     for (i in 1:nrow(imagetable)) {
       DATE <- format(as.Date(imagetable$solarday[i]))
@@ -1453,22 +1394,19 @@ write_react_json <- function(viewtable) {
       IMAGE_ID <- glue::glue("{collection}/{SDATE}/{SITE_NAME}_{DATE}")
       IMAGE_URL <- glue::glue(url_template, .open = "<<", .close = ">>")
       
-      
       images <- paste0(c(images, glue::glue(image_template, .open = "<<", .close = ">>")), collapse = ",\n")
-      
     }
     
     sites <- paste0(c(sites, glue::glue(sprintf(site_template, images), .open = "<<", .close = ">>")), collapse = ",\n")
-    
   }
+  
   jstext <- sprintf('{
 "locations": [
  %s
 ]
         }', sites)
-  #writeLines(jstext)
+  
   outfile <- "inst/docs/image-catalog.json"
   writeLines(jstext, outfile)
   outfile
-  
 }
