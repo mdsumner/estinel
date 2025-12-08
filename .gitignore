@@ -9,3 +9,5 @@ log_directory
 _s3_markers
 pyfixes
 devcode
+inst/docs/image-catalog.json
+inst/docs/image-catalog.json.gz
