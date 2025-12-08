@@ -173,6 +173,15 @@ tar_assign({
   pagejson <- write_react_json(catalog_table) |> tar_force(force = TRUE)
   web <- update_react(pagejson, rootdir) |> tar_force(force = TRUE)
   
+  browser_update <- check_and_update_browser(
+    local_path = "inst/docs/catalog-browser.html",
+    remote_url = "https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html",
+    bucket = "estinel"
+  ) |>
+    tar_target(
+      cue = tar_cue(mode = "always")  # Always check (but only upload if needed)
+    )
+  
   # === UPDATE MARKERS ===
   # After successful processing, update markers with latest solarday
   # This enables the next run to start from where we left off

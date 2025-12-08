@@ -1,4 +1,127 @@
-# Add to R/functions.R
+#' Check if browser HTML needs updating
+#'
+#' @param local_path Character. Path to local browser HTML
+#' @param remote_url Character. URL of deployed browser
+#' @return Logical. TRUE if files differ, FALSE if identical
+check_browser_needs_update <- function(
+    local_path = "inst/docs/catalog-browser.html",
+    remote_url = "https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html"
+) {
+  
+  if (!file.exists(local_path)) {
+    warning("Local browser file not found: ", local_path)
+    return(FALSE)
+  }
+  
+  # Read local file
+  local_content <- readLines(local_path, warn = FALSE)
+  local_hash <- digest::digest(paste(local_content, collapse = "\n"), algo = "md5")
+  
+  # Fetch remote file
+  tryCatch({
+    temp_file <- tempfile(fileext = ".html")
+    download.file(remote_url, temp_file, quiet = TRUE, mode = "wb")
+    remote_content <- readLines(temp_file, warn = FALSE)
+    remote_hash <- digest::digest(paste(remote_content, collapse = "\n"), algo = "md5")
+    unlink(temp_file)
+    
+    # Compare
+    needs_update <- local_hash != remote_hash
+    
+    if (needs_update) {
+      message("Browser HTML has changed (local hash: ", local_hash, 
+              ", remote hash: ", remote_hash, ")")
+    } else {
+      message("Browser HTML is up to date")
+    }
+    
+    return(needs_update)
+    
+  }, error = function(e) {
+    warning("Could not fetch remote browser: ", e$message)
+    # If can't fetch remote, assume needs update (safe default)
+    return(TRUE)
+  })
+}
+
+
+#' Update browser HTML on remote server
+#'
+#' @param local_path Character. Path to local browser HTML
+#' @param bucket Character. S3 bucket name
+#' @param remote_path Character. Path within bucket
+#' @return Logical. TRUE if upload successful
+update_browser_html <- function(
+    local_path = "inst/docs/catalog-browser.html",
+    bucket = "estinel",
+    remote_path = "catalog/catalog-browser.html"
+) {
+  
+  set_gdal_envs()
+  
+  if (!file.exists(local_path)) {
+    stop("Local browser file not found: ", local_path)
+  }
+  
+  # Upload to S3
+  output_path <- sprintf("/vsis3/%s/%s", bucket, remote_path)
+  
+  tryCatch({
+    # Read local file
+    con_local <- file(local_path, "rb")
+    bytes <- readBin(con_local, "raw", file.info(local_path)$size)
+    close(con_local)
+    
+    # Write to S3
+    con_remote <- new(gdalraster::VSIFile, output_path, "w")
+    con_remote$write(bytes)
+    con_remote$close()
+    
+    # Verify upload
+    if (gdalraster::vsi_stat(output_path, "exists")) {
+      message("✓ Browser HTML uploaded successfully to ", output_path)
+      return(TRUE)
+    } else {
+      warning("Upload may have failed - file not found at ", output_path)
+      return(FALSE)
+    }
+    
+  }, error = function(e) {
+    warning("Failed to upload browser HTML: ", e$message)
+    return(FALSE)
+  })
+}
+#' Check and update browser if needed
+#'
+#' @param local_path Character. Path to local browser HTML
+#' @param remote_url Character. URL of deployed browser
+#' @param bucket Character. S3 bucket name
+#' @param remote_path Character. Path within bucket
+#' @return Character. Status message
+check_and_update_browser <- function(
+    local_path = "inst/docs/catalog-browser.html",
+    remote_url = "https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html",
+    bucket = "estinel",
+    remote_path = "catalog/catalog-browser.html"
+) {
+  
+  # Check if update needed
+  needs_update <- check_browser_needs_update(local_path, remote_url)
+  
+  if (!needs_update) {
+    return("Browser is up to date - no upload needed")
+  }
+  
+  # Upload
+  message("Browser has changed - uploading update...")
+  success <- update_browser_html(local_path, bucket, remote_path)
+  
+  if (success) {
+    return(sprintf("Browser updated successfully at %s", Sys.time()))
+  } else {
+    return("Browser update FAILED - check logs")
+  }
+}
 audit_location_coverage <- function(viewtable, expected_start = "2015-01-01") {
   coverage <- viewtable |> 
     dplyr::group_by(location) |> 
