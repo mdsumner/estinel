@@ -45,51 +45,79 @@ check_browser_needs_update <- function(
 }
 
 
-#' Update browser HTML on remote server
-#'
-#' @param local_path Character. Path to local browser HTML
-#' @param bucket Character. S3 bucket name
-#' @param remote_path Character. Path within bucket
-#' @return Logical. TRUE if upload successful
+#' #' Update browser HTML on remote server
+#' #'
+#' #' @param local_path Character. Path to local browser HTML
+#' #' @param bucket Character. S3 bucket name
+#' #' @param remote_path Character. Path within bucket
+#' #' @return Logical. TRUE if upload successful
+#' update_browser_html <- function(
+#'     local_path = "inst/docs/catalog-browser.html",
+#'     bucket = "estinel",
+#'     remote_path = "catalog/catalog-browser.html"
+#' ) {
+#'   
+#'   set_gdal_envs()
+#'   
+#'   if (!file.exists(local_path)) {
+#'     stop("Local browser file not found: ", local_path)
+#'   }
+#'   
+#'   # Upload to S3
+#'   output_path <- sprintf("/vsis3/%s/%s", bucket, remote_path)
+#'   
+#'   tryCatch({
+#'     # Read local file
+#'     con_local <- file(local_path, "rb")
+#'     bytes <- readBin(con_local, "raw", file.info(local_path)$size)
+#'     close(con_local)
+#'     
+#'     # Write to S3
+#'     con_remote <- new(gdalraster::VSIFile, output_path, "w")
+#'     con_remote$write(bytes)
+#'     con_remote$close()
+#'     
+#'     # Verify upload
+#'     if (gdalraster::vsi_stat(output_path, "exists")) {
+#'       message("✓ Browser HTML uploaded successfully to ", output_path)
+#'       return(TRUE)
+#'     } else {
+#'       warning("Upload may have failed - file not found at ", output_path)
+#'       return(FALSE)
+#'     }
+#'     
+#'   }, error = function(e) {
+#'     warning("Failed to upload browser HTML: ", e$message)
+#'     return(FALSE)
+#'   })
+#' }
+
+
 update_browser_html <- function(
     local_path = "inst/docs/catalog-browser.html",
     bucket = "estinel",
     remote_path = "catalog/catalog-browser.html"
 ) {
   
-  set_gdal_envs()
-  
   if (!file.exists(local_path)) {
     stop("Local browser file not found: ", local_path)
   }
   
-  # Upload to S3
-  output_path <- sprintf("/vsis3/%s/%s", bucket, remote_path)
+  # Use AWS CLI with correct Content-Type (simpler than GDAL for HTML)
+  s3_url <- sprintf("s3://%s/%s", bucket, remote_path)
+  cmd <- sprintf(
+    'aws s3 --profile pawsey1197 cp "%s" "%s" --content-type "text/html"',
+    local_path, s3_url
+  )
   
-  tryCatch({
-    # Read local file
-    con_local <- file(local_path, "rb")
-    bytes <- readBin(con_local, "raw", file.info(local_path)$size)
-    close(con_local)
-    
-    # Write to S3
-    con_remote <- new(gdalraster::VSIFile, output_path, "w")
-    con_remote$write(bytes)
-    con_remote$close()
-    
-    # Verify upload
-    if (gdalraster::vsi_stat(output_path, "exists")) {
-      message("✓ Browser HTML uploaded successfully to ", output_path)
-      return(TRUE)
-    } else {
-      warning("Upload may have failed - file not found at ", output_path)
-      return(FALSE)
-    }
-    
-  }, error = function(e) {
-    warning("Failed to upload browser HTML: ", e$message)
-    return(FALSE)
-  })
+  result <- system(cmd, ignore.stdout = FALSE)
+  
+  if (result == 0) {
+    message("✓ Browser HTML uploaded with correct Content-Type")
+    return(TRUE)
+  } else {
+    stop("Upload failed")
+  }
 }
 #' Check and update browser if needed
 #'
@@ -470,8 +498,8 @@ define_locations_table <- function() {
     tibble::tibble(location = "Heard_Island_Spit_Bay_2", lon = 73.7189, lat = -53.1141, radiusx = 5000, radiusy = 5000, purpose = "heard,subantarctic,island"),
     tibble::tibble(location = "Heard_Island_Compton_Lagoon", lon = 73.6107, lat = -53.0581, purpose = "heard,island"),
     tibble::tibble(location = "Mawson_Station", lon = 62.8742, lat = -67.6033, purpose = "base,mawson,antarctica"),
-    tibble::tibble(location = "Macquarie_Island_Station", lon = 158.9384, lat = -54.4987, purpose = "base,macquarie,subantarctic,island"),
-    tibble::tibble(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = "macquarie,subantarctic,island"),
+    tibble::tibble(location = "Macquarie_Island_Station", lon = 158.9384, lat = -54.4987, purpose = "base,macquarie,subantarctic,island,tasmania"),
+    tibble::tibble(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = "macquarie,subantarctic,island,tasmania"),
     tibble::tibble(location = "Scullin_Monolith", lon = 66.7189, lat = -67.7935, purpose = "antarctica"), 
     tibble::tibble(location = "Concordia_Station", lon = 123.3322, lat = -75.0997, purpose = "antarctica"), 
     tibble::tibble(location = "Dome_C_North", lon = 122.5206, lat = -75.3413, purpose = "base,antarctica"), 
@@ -492,7 +520,8 @@ define_locations_table <- function() {
     tibble::tibble(location = "Rapa_Nui", lon = -109.4292, lat = -27.1984, purpose = "cetacean,island,chile"),
     tibble::tibble(location = "Maui", lon = -156.46262, lat = 20.6366, purpose = "cetacean,island,hawaii"),
     # Eyjafjörður Whale Research Site
-    tibble::tibble(location = "Eyjafjordur", lon = -18.2,  lat =65.85, radiusx = 5000, radiusy = 5000, purpose = "cetacean,island,iceland"),
+    tibble::tibble(location = "Eyjafjordur", lon = -18.2 + 0.073,  lat =65.85, radiusx = 5000, radiusy = 5000, purpose = "cetacean,island,iceland"),
+    tibble::tibble(location = "Eyjafjordur_Fjord", lon = -18.2 + 0.073,  lat =65.85, radiusx = 12000, radiusy = 12000, resolution = 20, purpose = "cetacean,island,iceland"),
     cleanup_table()) |> fill_values() |> check_table()
 }
 

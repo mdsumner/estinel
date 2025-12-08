@@ -9,6 +9,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
     // Register all UTM zone definitions for proj4js
     for (var zone = 1; zone <= 60; zone++) {
@@ -157,6 +158,117 @@
       </svg>
     );
 
+
+    // ============================================================================
+    // URL SHARING UTILITIES
+    // ============================================================================
+
+    const parseUrlParams = () => {
+      const params = new URLSearchParams(window.location.search);
+      const hash = window.location.hash.slice(1);
+      
+      if (hash && hash.length === 8) {
+        const stored = localStorage.getItem('estinel_urlShortcodes');
+        if (stored) {
+          try {
+            const shortcodes = JSON.parse(stored);
+            if (shortcodes[hash]) {
+              return shortcodes[hash];
+            }
+          } catch (e) {
+            console.warn('Failed to parse short URL:', e);
+          }
+        }
+      }
+      
+      return {
+        location: params.get('location'),
+        date: params.get('date'),
+        date1: params.get('date1'),
+        date2: params.get('date2'),
+        index: params.get('index') ? parseInt(params.get('index')) : null,
+        viewtype: params.get('viewtype'),
+        mode: params.get('mode'),
+        purpose: params.get('purpose')?.split(',').filter(Boolean) || null,
+        rating: params.get('rating')?.split(',').filter(Boolean) || null,
+        crosshair: params.get('crosshair') === 'true',
+        thumbnails: params.get('thumbnails') !== 'false',
+        sort: params.get('sort') || 'recent'
+      };
+    };
+
+    const generateShareUrl = (state) => {
+      const params = new URLSearchParams();
+      
+      if (state.location) params.set('location', state.location);
+      if (state.date) params.set('date', state.date);
+      if (state.date1) params.set('date1', state.date1);
+      if (state.date2) params.set('date2', state.date2);
+      if (state.index !== null && state.index !== undefined) params.set('index', state.index);
+      if (state.viewtype) params.set('viewtype', state.viewtype);
+      if (state.mode && state.mode !== 'single') params.set('mode', state.mode);
+      if (state.purpose && state.purpose.length > 0) params.set('purpose', state.purpose.join(','));
+      if (state.rating && state.rating.length > 0) params.set('rating', state.rating.join(','));
+      if (state.crosshair) params.set('crosshair', 'true');
+      if (!state.thumbnails) params.set('thumbnails', 'false');
+      if (state.sort !== 'recent') params.set('sort', state.sort);
+      
+      const url = new URL(window.location.href);
+      url.search = params.toString();
+      url.hash = '';
+      return url.toString();
+    };
+
+    const generateShortUrlFromState = (state) => {
+      const fullUrl = generateShareUrl(state);
+      const params = new URL(fullUrl).search;
+      
+      let hash = 0;
+      for (let i = 0; i < params.length; i++) {
+        const char = params.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      const shortCode = Math.abs(hash).toString(36).padStart(8, '0').slice(0, 8);
+      
+      const stored = localStorage.getItem('estinel_urlShortcodes') || '{}';
+      const shortcodes = JSON.parse(stored);
+      shortcodes[shortCode] = parseUrlParams();
+      localStorage.setItem('estinel_urlShortcodes', JSON.stringify(shortcodes));
+      
+      const url = new URL(window.location.href);
+      url.search = '';
+      url.hash = shortCode;
+      return url.toString();
+    };
+
+    const generateQRCode = (text) => {
+      return new Promise((resolve, reject) => {
+        const container = document.createElement('div');
+        try {
+          const qr = new QRCode(container, {
+            text: text,
+            width: 300,
+            height: 300,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
+          });
+          
+          setTimeout(() => {
+            const canvas = container.querySelector('canvas');
+            if (canvas) {
+              resolve(canvas.toDataURL());
+            } else {
+              reject(new Error('QR code generation failed'));
+            }
+          }, 100);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    };
+
     function SatImageBrowser() {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -198,6 +310,13 @@
         }
         return id;
       });
+      
+      // Share functionality state
+      const [showShareMenu, setShowShareMenu] = useState(false);
+      const [shareState, setShareState] = useState('idle');
+      const [showQRModal, setShowQRModal] = useState(false);
+      const [qrCodeData, setQrCodeData] = useState(null);
+      const [shortUrl, setShortUrl] = useState(null);
 
       // Load ratings from localStorage
       useEffect(() => {
@@ -563,6 +682,98 @@
         });
       };
 
+      const copyShareUrl = async (useShortUrl = false) => {
+        try {
+          setShareState('copying');
+          const state = {
+            location: selectedLocation?.name,
+            date: currentImage?.date,
+            index: viewMode === 'single' ? currentIndex : null,
+            date1: viewMode !== 'single' ? currentImages[compareIndices[0]]?.date : null,
+            date2: viewMode !== 'single' ? currentImages[compareIndices[1]]?.date : null,
+            viewtype: activeViewType,
+            mode: viewMode,
+            purpose: purposeFilters.length > 0 ? purposeFilters : null,
+            rating: ratingFilters.length < 4 ? ratingFilters : null,
+            crosshair: showCrosshair,
+            thumbnails: showThumbnails,
+            sort: locationSort
+          };
+          
+          const url = useShortUrl ? generateShortUrlFromState(state) : generateShareUrl(state);
+          await navigator.clipboard.writeText(url);
+          setShareState('success');
+          setTimeout(() => {
+            setShareState('idle');
+            setShowShareMenu(false);
+          }, 2000);
+        } catch (err) {
+          console.error('Failed to copy:', err);
+          setShareState('error');
+          setTimeout(() => setShareState('idle'), 2000);
+        }
+      };
+
+      const showQRCode = async (useShortUrl = false) => {
+        try {
+          const state = {
+            location: selectedLocation?.name,
+            date: currentImage?.date,
+            index: viewMode === 'single' ? currentIndex : null,
+            date1: viewMode !== 'single' ? currentImages[compareIndices[0]]?.date : null,
+            date2: viewMode !== 'single' ? currentImages[compareIndices[1]]?.date : null,
+            viewtype: activeViewType,
+            mode: viewMode,
+            purpose: purposeFilters.length > 0 ? purposeFilters : null,
+            rating: ratingFilters.length < 4 ? ratingFilters : null,
+            crosshair: showCrosshair,
+            thumbnails: showThumbnails,
+            sort: locationSort
+          };
+          
+          const url = useShortUrl ? generateShortUrlFromState(state) : generateShareUrl(state);
+          setShortUrl(url);
+          const qrData = await generateQRCode(url);
+          setQrCodeData(qrData);
+          setShowQRModal(true);
+        } catch (err) {
+          console.error('Failed to generate QR code:', err);
+          alert('Failed to generate QR code');
+        }
+      };
+
+      const shareViaEmail = () => {
+        const state = {
+          location: selectedLocation?.name,
+          date: currentImage?.date,
+          index: viewMode === 'single' ? currentIndex : null,
+          viewtype: activeViewType,
+          mode: viewMode
+        };
+        const url = generateShareUrl(state);
+        const subject = encodeURIComponent(`Estinel: ${selectedLocation?.name} - ${currentImage?.date}`);
+        const body = encodeURIComponent(`Check out this satellite image:
+
+${url}`);
+        window.location.href = `mailto:?subject=${subject}&body=${body}`;
+      };
+
+      const shareViaBluesky = () => {
+        const state = {
+          location: selectedLocation?.name,
+          date: currentImage?.date,
+          index: viewMode === 'single' ? currentIndex : null,
+          viewtype: activeViewType,
+          mode: viewMode
+        };
+        const url = generateShareUrl(state);
+        const text = encodeURIComponent(`Satellite imagery: ${selectedLocation?.name} (${currentImage?.date})
+
+${url}`);
+        window.open(`https://bsky.app/intent/compose?text=${text}`, '_blank');
+      };
+
+
       // Load catalog on mount
       useEffect(() => {
         fetch(CATALOG_URL)
@@ -714,6 +925,21 @@
         return () => document.removeEventListener('mousedown', handleClickOutside);
       }, [showFilterDropdown, showPurposeDropdown, showCoordPopup]);
 
+      // Close share menu when clicking outside
+      useEffect(() => {
+        const handleClickOutside = (e) => {
+          if (showShareMenu && !e.target.closest('.relative')) {
+            setShowShareMenu(false);
+          }
+        };
+        
+        if (showShareMenu) {
+          document.addEventListener('mousedown', handleClickOutside);
+          return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+      }, [showShareMenu]);
+
+
       // Autoplay functionality
       useEffect(() => {
         if (!isPlaying || viewMode !== 'single') return;
@@ -758,6 +984,64 @@
         window.addEventListener('keydown', handleKeyPress);
         return () => window.removeEventListener('keydown', handleKeyPress);
       }, [currentIndex, currentImages.length, currentImage, viewMode]);
+
+      // Apply URL parameters on load
+      useEffect(() => {
+        if (!data || !selectedLocation) return;
+        
+        const urlParams = parseUrlParams();
+        if (!urlParams.location && !urlParams.date && !urlParams.index) return;
+        
+        setTimeout(() => {
+          if (urlParams.location) {
+            const location = data.locations.find(l => l.name === urlParams.location);
+            if (location && location.id !== selectedLocation.id) {
+              setSelectedLocation(location);
+            }
+          }
+          
+          if (urlParams.viewtype && availableViewTypes.includes(urlParams.viewtype)) {
+            setViewType(urlParams.viewtype);
+          }
+          
+          if (urlParams.mode && ['single', 'compare', 'slider'].includes(urlParams.mode)) {
+            setViewMode(urlParams.mode);
+          }
+          
+          if (urlParams.purpose) {
+            setPurposeFilters(urlParams.purpose);
+          }
+          if (urlParams.rating) {
+            setRatingFilters(urlParams.rating);
+          }
+          
+          if (typeof urlParams.crosshair === 'boolean') {
+            setShowCrosshair(urlParams.crosshair);
+          }
+          if (typeof urlParams.thumbnails === 'boolean') {
+            setShowThumbnails(urlParams.thumbnails);
+          }
+          if (urlParams.sort) {
+            setLocationSort(urlParams.sort);
+          }
+          
+          if (urlParams.mode === 'single') {
+            if (urlParams.date) {
+              const imgIndex = currentImages.findIndex(img => img.date === urlParams.date);
+              if (imgIndex !== -1) setCurrentIndex(imgIndex);
+            } else if (urlParams.index !== null) {
+              if (urlParams.index < currentImages.length) setCurrentIndex(urlParams.index);
+            }
+          } else if (urlParams.date1 && urlParams.date2) {
+            const idx1 = currentImages.findIndex(img => img.date === urlParams.date1);
+            const idx2 = currentImages.findIndex(img => img.date === urlParams.date2);
+            if (idx1 !== -1 && idx2 !== -1) {
+              setCompareIndices([idx1, idx2]);
+            }
+          }
+        }, 100);
+      }, [data, selectedLocation?.id]);
+
 
       const goToNext = () => {
         if (viewMode === 'single') {
@@ -859,7 +1143,7 @@
           <div className="bg-gray-800 border-b border-gray-700 p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <h1 className="text-xl font-bold">Satellite Image Browser</h1>
+                <h1 className="text-xl font-bold">Satellite Image Browser{(() => { const p = parseUrlParams(); return (p.location || p.date) ? <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">📎 Shared View</span> : null; })()}</h1>
                 
                 <button
                   onClick={() => setLocationSort(prev => prev === 'recent' ? 'alphabetical' : 'recent')}
@@ -1075,6 +1359,95 @@
                 >
                   <Star />
                 </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowShareMenu(!showShareMenu)}
+                    className={`p-2 rounded ${showShareMenu ? 'bg-blue-600' : 'bg-gray-700'} hover:bg-blue-700`}
+                    title="Share this view"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="18" cy="5" r="3"></circle>
+                      <circle cx="6" cy="12" r="3"></circle>
+                      <circle cx="18" cy="19" r="3"></circle>
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                    </svg>
+                  </button>
+                  
+                  {showShareMenu && (
+                    <div className="absolute top-full mt-2 right-0 bg-gray-700 border border-gray-600 rounded shadow-lg z-50 min-w-[220px]">
+                      <div className="p-2 space-y-1">
+                        <div className="text-xs text-gray-300 px-2 py-1 border-b border-gray-600">
+                          <div className="font-semibold">Share Current View</div>
+                          <div className="text-[10px] text-gray-400 mt-1">
+                            {selectedLocation?.name} • {currentImage?.date}
+                          </div>
+                        </div>
+                        
+                        <button
+                          onClick={() => copyShareUrl(false)}
+                          disabled={shareState === 'copying'}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-600 rounded text-sm flex items-center gap-2"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                          </svg>
+                          {shareState === 'copying' ? 'Copying...' : shareState === 'success' ? '✓ Copied!' : 'Copy Link'}
+                        </button>
+                        
+                        <button
+                          onClick={() => copyShareUrl(true)}
+                          disabled={shareState === 'copying'}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-600 rounded text-sm flex items-center gap-2"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                          </svg>
+                          Copy Short Link
+                        </button>
+                        
+                        <button
+                          onClick={() => showQRCode(false)}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-600 rounded text-sm flex items-center gap-2"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                          </svg>
+                          Show QR Code
+                        </button>
+                        
+                        <button
+                          onClick={shareViaBluesky}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-600 rounded text-sm flex items-center gap-2"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"></path>
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                            <path d="M9 9h.01"></path>
+                            <path d="M15 9h.01"></path>
+                          </svg>
+                          Share via Bluesky
+                        </button>
+                        
+                        <button
+                          onClick={shareViaEmail}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-600 rounded text-sm flex items-center gap-2"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                          </svg>
+                          Share via Email
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => setShowHelp(!showHelp)}
                   className={`p-2 rounded ${showHelp ? 'bg-blue-600' : 'bg-gray-700'} hover:bg-blue-700`}
@@ -1787,6 +2160,52 @@
               </div>
             </div>
           )}
+          {/* QR Code Modal */}
+          {showQRModal && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+              onClick={() => setShowQRModal(false)}
+            >
+              <div 
+                className="bg-gray-800 border border-gray-600 rounded-lg p-6 max-w-md"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-lg font-bold">Share via QR Code</h3>
+                  <button
+                    onClick={() => setShowQRModal(false)}
+                    className="text-gray-400 hover:text-gray-200"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+                
+                {qrCodeData && (
+                  <div className="flex flex-col items-center gap-4">
+                    <img src={qrCodeData} alt="QR Code" className="border-4 border-white" />
+                    
+                    <div className="w-full">
+                      <div className="text-xs text-gray-400 mb-1">Link:</div>
+                      <div className="bg-gray-900 p-2 rounded text-xs font-mono break-all">
+                        {shortUrl}
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={() => navigator.clipboard.writeText(shortUrl)}
+                      className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold"
+                    >
+                      Copy Link
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
 
           {/* Keyboard shortcuts hint */}
           <div className="bg-gray-800 border-t border-gray-700 px-4 py-2 text-xs text-gray-400">
