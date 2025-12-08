@@ -688,7 +688,6 @@
           const state = {
             location: selectedLocation?.name,
             date: currentImage?.date,
-            index: viewMode === 'single' ? currentIndex : null,
             date1: viewMode !== 'single' ? currentImages[compareIndices[0]]?.date : null,
             date2: viewMode !== 'single' ? currentImages[compareIndices[1]]?.date : null,
             viewtype: activeViewType,
@@ -719,7 +718,6 @@
           const state = {
             location: selectedLocation?.name,
             date: currentImage?.date,
-            index: viewMode === 'single' ? currentIndex : null,
             date1: viewMode !== 'single' ? currentImages[compareIndices[0]]?.date : null,
             date2: viewMode !== 'single' ? currentImages[compareIndices[1]]?.date : null,
             viewtype: activeViewType,
@@ -746,7 +744,6 @@
         const state = {
           location: selectedLocation?.name,
           date: currentImage?.date,
-          index: viewMode === 'single' ? currentIndex : null,
           viewtype: activeViewType,
           mode: viewMode
         };
@@ -762,7 +759,6 @@ ${url}`);
         const state = {
           location: selectedLocation?.name,
           date: currentImage?.date,
-          index: viewMode === 'single' ? currentIndex : null,
           viewtype: activeViewType,
           mode: viewMode
         };
@@ -1027,10 +1023,9 @@ ${url}`);
           
           if (urlParams.mode === 'single') {
             if (urlParams.date) {
-              const imgIndex = currentImages.findIndex(img => img.date === urlParams.date);
+              // Find in FILTERED images, not currentImages
+              const imgIndex = filteredImages.findIndex(img => img.date === urlParams.date);
               if (imgIndex !== -1) setCurrentIndex(imgIndex);
-            } else if (urlParams.index !== null) {
-              if (urlParams.index < currentImages.length) setCurrentIndex(urlParams.index);
             }
           } else if (urlParams.date1 && urlParams.date2) {
             const idx1 = currentImages.findIndex(img => img.date === urlParams.date1);
