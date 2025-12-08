@@ -233,7 +233,7 @@
       
       const stored = localStorage.getItem('estinel_urlShortcodes') || '{}';
       const shortcodes = JSON.parse(stored);
-      shortcodes[shortCode] = parseUrlParams();
+      shortcodes[shortCode] = state;  // Store the state directly, not parseUrlParams()
       localStorage.setItem('estinel_urlShortcodes', JSON.stringify(shortcodes));
       
       const url = new URL(window.location.href);
