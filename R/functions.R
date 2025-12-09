@@ -519,7 +519,9 @@ define_locations_table <- function() {
     tibble::tibble(location = "Pearson_Sandhills", lon = 131.1440, lat = -31.4633, purpose = "cetacean,southaustralia"),
     tibble::tibble(location = "Rapa_Nui", lon = -109.4292, lat = -27.1984, purpose = "cetacean,island,chile"),
     tibble::tibble(location = "Maui", lon = -156.46262, lat = 20.6366, purpose = "cetacean,island,hawaii"),
-    # Eyjafjörður Whale Research Site
+tibble::tibble(location = "French Island", lon = 145.3472, lat = -38.3484, purpose = "island,victoria"),
+      
+      # Eyjafjörður Whale Research Site
     tibble::tibble(location = "Eyjafjordur", lon = -18.2 + 0.073,  lat =65.85, radiusx = 5000, radiusy = 5000, purpose = "cetacean,island,iceland"),
     tibble::tibble(location = "Eyjafjordur_Fjord", lon = -18.2 + 0.073,  lat =65.85, radiusx = 12000, radiusy = 12000, resolution = 20, purpose = "cetacean,island,iceland"),
     cleanup_table()) |> fill_values() |> check_table()
