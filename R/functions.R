@@ -520,15 +520,17 @@ define_locations_table <- function() {
     tibble::tibble(location = "Rapa_Nui", lon = -109.4292, lat = -27.1984, purpose = "cetacean,island,chile"),
     tibble::tibble(location = "Maui", lon = -156.46262, lat = 20.6366, purpose = "cetacean,island,hawaii"),
 tibble::tibble(location = "French Island", lon = 145.3472, lat = -38.3484, purpose = "island,victoria"),
-      tibble::tibble(
-  location = "Kerguelen_Island_100m",
-  lon = 69.5,
-  lat = -49.35,
-  radiusx = 85000,
-  radiusy = 85000,
-  resolution = 100,
-  purpose = "island,subantarctic"
-), 
+tibble::tibble(location = "McDonald_Island", lon = 72.5773193, lat = -53.0379566, purpose = "island,mcdonald,subantarctic"),
+tibble::tibble(location = "Flinders_Island_100m", lon =148.2472915 , lat = -40.2174148, resolution = 100,purpose = "flinders,island,tasmania",  radiusx=15000, radiusy=50000),
+tibble::tibble(location = "King_Island_100m", lon = 144.0929451, lat = -39.8263455, resolution = 100, radiusx = 35000, radiusy = 20000, purpose = "king,island,tasmania"),
+tibble::tibble(location = "Bruny_Island_100m", lon = 147.2883943, lat = -43.3273722, resolution = 100, radiusx = 35000, radiusy = 20000, purpose = "bruny,island,tasmania"),
+tibble::tibble(location = "Maria_Island_100m", lon = 148.0659583, lat = -42.6488181, resolution = 100, radiusx = 35000, radiusy = 20000, purpose = "maria,island,tasmania"),
+
+      tibble::tibble(location = "Kerguelen_Island_Esperance",lon = 70.0463278,lat = -49.476426,purpose = "kerguelen,island,subantarctic"), 
+tibble::tibble(location = "Kerguelen_Island_100m",lon = 69.5,lat = -49.35,radiusx = 85000,radiusy = 85000,resolution = 100,purpose = "island,subantarctic"), 
+tibble::tibble(location = "Posession_Island", lon = 51.7255261, lat = -46.404379, purpose = "crozet,island,subantarctic"),
+tibble::tibble(location = "Campbell_Island", lon = 169.0854021, lat = -52.5464621, purpose = "campbell,island,subantarctic"),
+tibble::tibble(location = "New_Brighton", lon = 153.57131, lat = -28.538562, purpose = "cetacean,nsw"),
       # Eyjafjörður Whale Research Site
     tibble::tibble(location = "Eyjafjordur", lon = -18.2 + 0.073,  lat =65.85, radiusx = 5000, radiusy = 5000, purpose = "cetacean,island,iceland"),
     tibble::tibble(location = "Eyjafjordur_Fjord", lon = -18.2 + 0.073,  lat =65.85, radiusx = 12000, radiusy = 12000, resolution = 20, purpose = "cetacean,island,iceland"),
@@ -721,15 +723,18 @@ mkextent <- function(lon, lat, bufy = 3000, bufx = NULL, cosine = FALSE) {
 #' @param now POSIXct. Current time
 #' @param chunk_threshold_days Integer. Days span to trigger chunking (default 365)
 #' @return Data frame with query specifications (potentially expanded with chunks)
-prepare_queries_chunked <- function(spatial_window, markers, 
+prepare_queries_chunked <- function(spatial_window, markers = NULL, 
                                     default_start = "2015-01-01", 
                                     now = Sys.time(),
                                     chunk_threshold_days = 365) {
   
   # Start with basic query prep
+  if (!is.null(markers)) {
   query_table <- dplyr::left_join(spatial_window, markers, 
                                   by = c("SITE_ID", "location"))
-  
+  } else {
+    query_table <- spatial_window
+  }
   # Fix: Use if_else to preserve Date class
   query_table$start_solarday <- dplyr::if_else(
     is.na(query_table$last_solarday),
