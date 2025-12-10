@@ -1,3 +1,105 @@
+# ==============================================================================
+# LOCATIONS TABLE
+# ==============================================================================
+
+#' Define test location (Noville Peninsula)
+#'
+#' @return Data frame with single location
+define_test_location <- function() {
+  list(
+    tibble::tibble(location = "Taveuni_Island", lon = 179.999, lat = -16.8002, resolution = 10, 
+                   radiusx = 3000, radiusy = 3000, purpose = "island,antimeridian"), 
+  tibble::tibble(
+    location = "Noville_Peninsula",
+    lon = 163.0833,
+    lat = -77.5167,
+    resolution = 10,           # meters
+    radiusx = 3000,           # meters
+    radiusy = 3000,           # meters
+    purpose = "emperor"
+  )) |> dplyr::bind_rows() |> 
+    dplyr::mutate(
+      SITE_ID = unlist(lapply(location, \(.x) sprintf("site_%s", digest::digest(.x, algo = "murmur32")))))
+}
+
+# ==============================================================================
+# SPATIAL CALCULATIONS
+# ==============================================================================
+
+#' Compute spatial window for location
+#'
+#' Converts lon/lat + buffer to:
+#' - UTM CRS (appropriate zone)
+#' - Projected extent (xmin, xmax, ymin, ymax)
+#' - Lonlat extent (lonmin, lonmax, latmin, latmax)
+#'
+#' @param locations Data frame with lon, lat, radiusx, radiusy
+#' @return Data frame with added spatial fields
+compute_spatial_window <- function(locations) {
+  
+  # Determine UTM CRS
+  crs <- mk_utm_crs(locations$lon, locations$lat)
+  
+  # Create local LAEA projection for buffer
+  laea_crs <- sprintf("+proj=laea +lon_0=%f +lat_0=%f",
+                      locations$lon, locations$lat)
+  
+  # Compute extent in LAEA
+  laea_extent <- c(-locations$radiusx, locations$radiusx,
+                   -locations$radiusy, locations$radiusy)
+  
+  # Reproject to UTM
+  utm_extent <- reproj::reproj_extent(laea_extent, crs, source = laea_crs)
+  
+  # Snap to resolution
+  utm_extent <- vaster::buffer_extent(utm_extent, locations$resolution)
+  
+  # Compute lonlat extent
+  ll_extent <- reproj::reproj_extent(utm_extent, "+proj=longlat +over", source = crs)
+  
+  if (crs == "EPSG:32760" || crs == "EPSG:32701") {
+    crs2 <- sprintf("%s +over", PROJ::proj_crs_text(crs ,1L))
+    ll_extent <- reproj::reproj_extent(utm_extent, "EPSG:4326", source = crs2)
+  }
+  # Add to locations table
+  locations |>
+    dplyr::mutate(
+      crs = crs,
+      xmin = utm_extent[1],
+      xmax = utm_extent[2],
+      ymin = utm_extent[3],
+      ymax = utm_extent[4],
+      lonmin = ll_extent[1],
+      lonmax = ll_extent[2],
+      latmin = ll_extent[3],
+      latmax = ll_extent[4]
+    )
+}
+window_ll_extent <- function(x) {
+  unname(unlist(x[c("lonmin", "lonmax", "latmin", "latmax")]))
+}
+window_extent <- function(x) {
+  unname(unlist(x[c("xmin", "xmax", "xmin", "xmax")]))
+}
+
+
+
+# ==============================================================================
+# PLACEHOLDER FUNCTIONS (TODO: Implement)
+# ==============================================================================
+
+
+#' Prepare STAC query
+#'
+#' @param spatial_window Spatial window with bbox
+#' @param start_date Start date
+#' @param end_date End date
+#' @return Query specification
+prepare_query <- function(spatial_window, start_date, end_date, collections, provider) {
+  sds::stacit(window_ll_extent(spatial_window), c(format(start_date), format(end_date)), collections = collections, provider = provider, limit = 300)
+}
+
+
 #' Check if browser HTML needs updating
 #'
 #' @param local_path Character. Path to local browser HTML
