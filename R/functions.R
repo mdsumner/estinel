@@ -1,7 +1,50 @@
 # ==============================================================================
 # LOCATIONS TABLE
 # ==============================================================================
+prepare_locations_clean <- function(locations_current) {
+  
+  locations_clean <- locations_current |>
+    dplyr::mutate(
+      location_orig = location,
+      location = location |>
+        gsub("_", " ", x = _) |>
+        gsub(" (\\d+)m$", " (\\1m)", x = _),
+      location_id = sanitize_location(location),
+      SITE_ID = sprintf("site_%s", 
+                        purrr::map_chr(location, ~digest::digest(.x, algo = "murmur32")))
+    )
+  
+  # Check for collisions
+  collisions <- locations_clean |>
+    dplyr::count(location_id) |>
+    dplyr::filter(n > 1)
+  
+  if (nrow(collisions) > 0) {
+    warning("Location ID collisions detected!")
+    print(locations_clean |> 
+            dplyr::filter(location_id %in% collisions$location_id) |>
+            dplyr::select(location_orig, location, location_id))
+    stop("Fix collisions before proceeding")
+  }
+  
+  message("\n=== LOCATION MAPPING ===")
+  locations_clean |>
+    dplyr::select(location_orig, location, location_id, SITE_ID) |>
+    print(n = Inf)
+  
+  locations_clean
+}
 
+#' Sanitize location name for filesystem
+sanitize_location <- function(location) {
+  location |>
+    tolower() |>
+    stringi::stri_trans_general("Latin-ASCII") |>
+    gsub("\\s+", "-", x = _) |>
+    gsub("[^a-z0-9-]", "", x = _) |>
+    gsub("-+", "-", x = _) |>
+    gsub("^-|-$", "", x = _)
+}
 #' Define test location (Noville Peninsula)
 #'
 #' @return Data frame with single location
@@ -566,21 +609,26 @@ check_table <- function(x) {
   if (nrow(x) < 1) stop("no valid location rows (are there NAs?)")
   x
 }
-
+# Where:
+define_locations_clean <- function() {
+  readr::read_csv("locations_clean.csv")
+}
 cleanup_table <- function() {
-  x <- readxl::read_excel("Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
+  x <- readxl::read_excel("Copy of Emperor penguin colony locations_all_2024.xlsx", skip = 2) |> 
     dplyr::rename(location = colony, lon = long) |> dplyr::select(-date)
   x <- dplyr::filter(x, !grepl("Pointe", location))
   
   x2 <- readxl::read_excel("Emperor colonies_2022.xlsx") |> dplyr::transmute(location = Colony, lon = Long, lat = Lat)
+  x2 <- dplyr::filter(x2, !grepl("Posadowsky", location))
+  
   keep <- which(!gsub("_", " ", x$location) %in% x2$location)
   x <- rbind(x2, x[keep, ])
-  stp <- unlist(gregexpr("[\\[\\(]", x$location)) -1
-  stp[stp < 0] <- nchar(x$location[stp < 0])
-  x$location <- substr(x$location, 1, stp)
-  x$location <- trimws(x$location)
-  x$location <- gsub("\\s+", "_", x$location, perl = TRUE)
-  x$location <- gsub("é", "e", x$location)
+  # stp <- unlist(gregexpr("[\\[\\(]", x$location)) -1
+  # stp[stp < 0] <- nchar(x$location[stp < 0])
+  # x$location <- substr(x$location, 1, stp)
+  # x$location <- trimws(x$location)
+  # x$location <- gsub("\\s+", "_", x$location, perl = TRUE)
+  # x$location <- gsub("é", "e", x$location)
   x$purpose <- "emperor"
   x
 }
@@ -1741,4 +1789,50 @@ upload_catalog_to_release <- function(json_file,
     unlink(compressed_file)
     FALSE
   })
+}
+
+#' Clean locations table - Add location_id and SITE_ID
+#'
+#' @param locations_current Current locations table with underscores
+#' @return Clean locations with location, location_id, SITE_ID
+clean_locations_table <- function(locations_current) {
+  
+  locations_clean <- locations_current |>
+    dplyr::mutate(
+      # Keep original for reference (optional)
+      location_orig = location,
+      
+      # Clean location name (remove underscores)
+      location = location |>
+        gsub("_", " ", x = _) |>
+        gsub(" (\\d+)m$", " (\\1m)", x = _),  # "100m" -> "(100m)"
+      
+      # Generate filesystem-safe ID
+      location_id = sanitize_location(location),
+      
+      # Stable hash-based SITE_ID
+      SITE_ID = sprintf("site_%s", 
+                        purrr::map_chr(location, ~digest::digest(.x, algo = "murmur32")))
+    )
+  
+  # Check for collisions
+  collisions <- locations_clean |>
+    dplyr::count(location_id) |>
+    dplyr::filter(n > 1)
+  
+  if (nrow(collisions) > 0) {
+    warning("Location ID collisions detected!")
+    print(locations_clean |> 
+            dplyr::filter(location_id %in% collisions$location_id) |>
+            dplyr::select(location_orig, location, location_id))
+    stop("Fix collisions manually before proceeding")
+  }
+  
+  # Show transformation
+  message("\n=== LOCATION TRANSFORMATIONS ===")
+  locations_clean |>
+    dplyr::select(location_orig, location, location_id, SITE_ID) |>
+    print(n = Inf)
+  
+  locations_clean
 }

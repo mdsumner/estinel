@@ -207,11 +207,11 @@ write_assets_to_duckdb <- function(assets_df, db_path = "assets.duckdb") {
   assets_df$created_at <- Sys.time()
   
   # Connect to DuckDB
-  con <- duckdb::dbConnect(duckdb::duckdb(), db_path)
-  on.exit(duckdb::dbDisconnect(con))
+  con <- DBI::dbConnect(duckdb::duckdb(), db_path)
+  on.exit(DBI::dbDisconnect(con))
   
   # Create table if doesn't exist
-  duckdb::dbExecute(con, "
+  DBI::dbExecute(con, "
     CREATE TABLE IF NOT EXISTS assets (
       location TEXT NOT NULL,
       solarday DATE NOT NULL,
@@ -236,10 +236,10 @@ write_assets_to_duckdb <- function(assets_df, db_path = "assets.duckdb") {
   ")
   
   # Create temp table with new data
-  duckdb::dbWriteTable(con, "assets_new", assets_df, overwrite = TRUE, temporary = TRUE)
+  DBI::dbWriteTable(con, "assets_new", assets_df, overwrite = TRUE, temporary = TRUE)
   
   # Merge: Insert new or update existing
-  duckdb::dbExecute(con, "
+  DBI::dbExecute(con, "
     INSERT INTO assets
     SELECT * FROM assets_new
     ON CONFLICT (location, solarday, collection) 
@@ -264,7 +264,7 @@ write_assets_to_duckdb <- function(assets_df, db_path = "assets.duckdb") {
   
   # Get counts
   n_new <- nrow(assets_df)
-  n_total <- duckdb::dbGetQuery(con, "SELECT COUNT(*) as n FROM assets")$n
+  n_total <- DBI:dbGetQuery(con, "SELECT COUNT(*) as n FROM assets")$n
   
   message(sprintf("✓ Wrote %d assets (total: %d)", n_new, n_total))
   
@@ -292,11 +292,11 @@ consolidate_assets_to_duckdb <- function(parquet_files, db_path) {
                   length(parquet_files)))
   
   # Connect to DuckDB
-  con <- duckdb::dbConnect(duckdb::duckdb(), db_path)
-  on.exit(duckdb::dbDisconnect(con))
+  con <- DBI::dbConnect(duckdb::duckdb(), db_path)
+  on.exit(DBI::dbDisconnect(con))
   
   # Create table if doesn't exist
-  duckdb::dbExecute(con, "
+  DBI::dbExecute(con, "
     CREATE TABLE IF NOT EXISTS assets (
       location TEXT NOT NULL,
       solarday DATE NOT NULL,
@@ -338,11 +338,11 @@ consolidate_assets_to_duckdb <- function(parquet_files, db_path) {
     assets_df$created_at <- Sys.time()
     
     # Write to temp table
-    duckdb::dbWriteTable(con, "assets_temp", assets_df, 
+    DBI::dbWriteTable(con, "assets_temp", assets_df, 
                          overwrite = TRUE, temporary = TRUE)
     
     # Count new vs updates
-    existing <- duckdb::dbGetQuery(con, "
+    existing <- DBI::dbGetQuery(con, "
       SELECT COUNT(*) as n 
       FROM assets a
       JOIN assets_temp t 
@@ -356,7 +356,7 @@ consolidate_assets_to_duckdb <- function(parquet_files, db_path) {
     n_inserted <- n_inserted + n_new
     
     # Merge with deduplication
-    duckdb::dbExecute(con, "
+    DBI::dbExecute(con, "
       INSERT INTO assets
       SELECT * FROM assets_temp
       ON CONFLICT (location, solarday, collection) 
@@ -387,7 +387,7 @@ consolidate_assets_to_duckdb <- function(parquet_files, db_path) {
   }
   
   # Get final count
-  n_total <- duckdb::dbGetQuery(con, "SELECT COUNT(*) as n FROM assets")$n
+  n_total <- DBI::dbGetQuery(con, "SELECT COUNT(*) as n FROM assets")$n
   
   message(sprintf("
 ✓ Consolidation complete:

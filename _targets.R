@@ -46,51 +46,89 @@ tar_assign({
   # - Local: tempdir()
   # - S3: sprintf("/vsis3/%s", bucket)
   rootdir <- tempdir() |> tar_target()  # Change to /vsis3/estinel for S3
+  assets_parquet_store <- "_targets/assets_parquet" |> tar_target()
   
   # =============================================================================
   # LOCATIONS TABLE
   # =============================================================================
   
   # Single test location: Noville Peninsula
-  locations <- define_test_location() |> tar_target()
+  #locations0 <- define_test_location() |> tar_target()
+  #locations <- rbind(locations0, define_locations_table()) |> 
+  #  distinct(location, SITE_ID, .keep_all = TRUE) |> tar_target()
+  locations <- define_locations_table() |> clean_locations_table()  |> tar_target()
+  #locations <- define_locations_clean() |> tar_target()
+  
   
   # Compute spatial window (UTM CRS, bbox in projected + lonlat)
-  spatial_window <- compute_spatial_window(locations) |> tar_target(pattern = map(locations))
+  spatial_window <- compute_spatial_window(locations) |> 
+    tar_target(pattern = map(locations))
   
   # =============================================================================
   # QUERY GENERATION
   # =============================================================================
-  query_specs <- prepare_query(spatial_window,start_date = "2024-01-01", end_date = format(Sys.Date()), collection, provider) |> 
-                                 tar_target(pattern = map(spatial_window))
+  query_specs <- prepare_query(spatial_window,start_date = "2022-01-01", 
+                               end_date = "2022-06-30", collection, provider) |> 
+                                 tar_target(pattern = map(spatial_window), iteration = "list")
   
 
   # Process assets (parallel, by location)
-  # assets_table <- get_assets(query_specs) |>
-  #    tar_target(pattern = map(query_specs))
+  assets_table <- get_assets_from_urls(query_specs) |>
+     tar_target(pattern = map(query_specs))
+
+  # =============================================================================
+  # ADD KEYS (Minimal - just what's needed for join)
+  # =============================================================================
+  
+  # Add SITE_ID for joining later
+  # solarday already in assets_table from get_assets()
+  assets_with_keys <- assets_table |>
+    dplyr::mutate(
+      SITE_ID = spatial_window$SITE_ID,
+      collection = collection  # Add collection for completeness
+    ) |> 
+    tar_target(pattern = map(assets_table, spatial_window))
+  
+  # Write to Parquet (parallel, safe for concurrent writes)
+  # Each branch gets its own file
+  assets_parquet <- write_assets_to_parquet(
+    assets_with_keys,
+    output_dir = assets_parquet_store
+  ) |>
+    tar_target(
+      pattern = map(assets_with_keys),
+      format = "file"  # Track file path
+    )
+
+  # =============================================================================
+  # SINGLE-THREAD: Consolidate with distinct()
+  # =============================================================================
+  
+  # Read all parquets and deduplicate
+  # Key: (SITE_ID, solarday) - uniquely identifies a scene for a location
+  assets_consolidated <- consolidate_assets_distinct(
+    parquet_dir = assets_parquet_store,
+    parquet_files = assets_parquet
+  ) |> 
+    tar_target()
+  
+  # =============================================================================
+  # RENDERING (Join with spatial_window when needed)
+  # =============================================================================
+  
+  # Filter to assets we want to render (e.g., cloud cover < 30)
+  # assets_to_render <- assets_consolidated |>
+  #   dplyr::filter(cloud_cover < 30) |>
+  #   tar_target()
   # 
-  # # Write to Parquet (parallel, safe for concurrent writes)
-  # # Each branch gets its own file
-  # assets_parquet <- write_assets_to_parquet(
-  #   assets_table,
-  #   output_dir = file.path(rootdir, "assets_temp")
-  # ) |> 
-  #   tar_target(
-  #     pattern = map(assets_table),
-  #     format = "file"  # Track file path
-  #   )
+  # # NOW join with spatial_window to get bbox, crs, resolution, etc.
+  # render_specs <- assets_to_render |>
+  #   dplyr::left_join(spatial_window, by = "SITE_ID") |>
+  #   tar_target()
   # 
-  # # =============================================================================
-  # # SINGLE-THREAD: Consolidate all Parquet files into DuckDB
-  # # =============================================================================
-  # 
-  # # Read all Parquet files and write to DuckDB (single thread, no pattern!)
-  # assets_db <- consolidate_assets_to_duckdb(
-  #   parquet_files = assets_parquet,  # Vector of all parquet paths
-  #   db_path = file.path(rootdir, "assets.duckdb")
-  # ) |> 
-  #   tar_target()  # NO pattern = single thread
-  # 
-  # 
+  # # Render images (has everything needed: assets + spatial metadata)
+  # rgb_images <- render_rgb_composite(render_specs) |>
+  #   tar_target(pattern = map(render_specs))
   # # === MARKER-BASED INCREMENTAL PROCESSING ===
   # # Read existing markers to determine start date per location
   # # If no marker exists, will start from 2015-01-01
