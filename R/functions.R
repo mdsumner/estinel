@@ -384,7 +384,7 @@ build_image_png <- function(x, force = FALSE, type) {
       print(dsn)
     }
     set_gdal_envs()
-    Sys.unsetenv("AWS_NO_SIGN_REQUEST")
+    
     if (is.na(dsn)) return(NA_character_)
     #gsub("tif$", "png", dsn)
     outpng <- gsub("\\.tif$", sprintf("_%s.png", type),  dsn)
@@ -393,6 +393,7 @@ build_image_png <- function(x, force = FALSE, type) {
         return(outpng)  ## silently ignore
       }
     }
+    Sys.unsetenv("AWS_NO_SIGN_REQUEST")
     if (!fs::dir_exists(dirname(outpng))) {
       if (!is_cloud(outpng))  {
         fs::dir_create(dirname(outpng))
@@ -742,7 +743,7 @@ prepare_queries_chunked <- function(spatial_window, markers = NULL,
     query_table$last_solarday + 1
   )
   
-  end_solarday <- as.Date(now)
+  end_solarday <- as.Date(now) + 1
   
   # Calculate timezone buffers
   query_table$offset_hours <- query_table$lon / 15
@@ -1261,7 +1262,7 @@ validate_s3_marker <- function(marker_file) {
 build_image_dsn_tracked <- function(assets, resample = "near", 
                                     rootdir = tempdir(),
                                     marker_dir = "_targets/s3_markers") {
-  
+  set_gdal_envs()
   # Build the image (returns tibble with outfile)
   result <- build_image_dsn(assets, resample = resample, rootdir = rootdir)
   

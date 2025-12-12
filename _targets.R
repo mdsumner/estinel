@@ -69,9 +69,9 @@ tar_assign({
     tar_target(pattern = map(querytable), iteration = "list")
   
   # Join query metadata with results
-  stac_json_table <- join_stac_json(querytable, stac_json_list) |> 
-    tar_target()
-  
+  #stac_json_table <- join_stac_json(querytable, stac_json_list) |> 
+  #  tar_target()
+  stac_json_table <- mutate(querytable, js = list(stac_json_list)) |> tar_target(pattern = map(querytable, stac_json_list))
   # Process STAC results: extract asset URLs, compute solarday
   stac_tables <- process_stac_table2(stac_json_table) |> 
     tar_target(pattern = map(stac_json_table))
@@ -115,7 +115,7 @@ tar_assign({
      tar_target(pattern = map(group_table))
   # 
   # Validate markers
-  dsn_validation <- validate_all_markers(dsn_table_tracked) |> tar_target()
+  #dsn_validation <- validate_all_markers(dsn_table_tracked) |> tar_target()
   # 
   # # Extract paths for downstream use
   #dsn_table <- extract_s3_paths(dsn_table_tracked, "outfile") |> tar_target()
