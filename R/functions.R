@@ -494,6 +494,8 @@ define_locations_table <- function() {
     tibble::tibble(location = "Heard_Island_Atlas_Cove", lon = 73.3868, lat = -53.0243, purpose = "base,heard,subantarctic,island"),
     tibble::tibble(location = "Heard_Island_Atlas_Cove_2", lon = 73.3868, lat = -53.0243, radiusx = 5000, radiusy = 5000, purpose = "base,heard,island"),
     tibble::tibble(location = "Heard_Island_60m", lon = 73.5028, lat = -53.0914, resolution = 60, radiusx = 24000, radiusy = 14000, purpose = "heard,subantarctic,island"),
+    tibble::tibble(location = "Heard_Island_180m", lon = 73.5028, lat = -53.0914, resolution = 180, radiusx = 72000, radiusy = 72000, purpose = "heard,subantarctic,island"),
+    
     tibble::tibble(location = "Heard_Island_Big_Ben", lon = 73.5167, lat = -53.1000, purpose = "heard,subantarctic,island"), 
     tibble::tibble(location = "Heard_Island_Spit_Bay", lon = 73.7189, lat = -53.1141, purpose = "heard,subantarctic,island"),
     tibble::tibble(location = "Heard_Island_Spit_Bay_2", lon = 73.7189, lat = -53.1141, radiusx = 5000, radiusy = 5000, purpose = "heard,subantarctic,island"),
@@ -501,6 +503,8 @@ define_locations_table <- function() {
     tibble::tibble(location = "Mawson_Station", lon = 62.8742, lat = -67.6033, purpose = "base,mawson,antarctica"),
     tibble::tibble(location = "Macquarie_Island_Station", lon = 158.9384, lat = -54.4987, purpose = "base,macquarie,subantarctic,island,tasmania"),
     tibble::tibble(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = "macquarie,subantarctic,island,tasmania"),
+    tibble::tibble(location = "Macquarie_Island_40m", lon = 158.5766275, lat = -54.6071339, radiusx = 48000, radiusy = 48000, resolution = 40, purpose = "macquarie,subantarctic,island,tasmania"),
+    
     tibble::tibble(location = "Scullin_Monolith", lon = 66.7189, lat = -67.7935, purpose = "antarctica"), 
     tibble::tibble(location = "Concordia_Station", lon = 123.3322, lat = -75.0997, purpose = "antarctica"), 
     tibble::tibble(location = "Dome_C_North", lon = 122.5206, lat = -75.3413, purpose = "base,antarctica"), 
@@ -518,6 +522,7 @@ define_locations_table <- function() {
     tibble::tibble(location = "Tasman_Island", lon = 148.0045, lat = -43.2388, purpose = "tasmania,island,cetacean"),
     tibble::tibble(location = "Dumont_dUrville_Station", lon = 139.9978, lat = -66.6651, purpose = "antarctica"), 
     tibble::tibble(location = "Pearson_Sandhills", lon = 131.1440, lat = -31.4633, purpose = "cetacean,southaustralia"),
+    tibble::tibble(location = "Head_of_the_Bight", lon = 131.158572, lat  = -31.493584, purpose = "cetacean,southaustralia"),
     tibble::tibble(location = "Rapa_Nui", lon = -109.4292, lat = -27.1984, purpose = "cetacean,island,chile"),
     tibble::tibble(location = "Maui", lon = -156.46262, lat = 20.6366, purpose = "cetacean,island,hawaii"),
 tibble::tibble(location = "French Island", lon = 145.3472, lat = -38.3484, purpose = "island,victoria"),
