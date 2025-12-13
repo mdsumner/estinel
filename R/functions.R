@@ -541,6 +541,7 @@ tibble::tibble(location = "New_Brighton", lon = 153.57131, lat = -28.538562, pur
       # Eyjafjörður Whale Research Site
     tibble::tibble(location = "Eyjafjordur", lon = -18.2 + 0.073,  lat =65.85, radiusx = 5000, radiusy = 5000, purpose = "cetacean,island,iceland"),
     tibble::tibble(location = "Eyjafjordur_Fjord", lon = -18.2 + 0.073,  lat =65.85, radiusx = 12000, radiusy = 12000, resolution = 20, purpose = "cetacean,island,iceland"),
+    tibble::tibble(location = "San_Simeon", lon = -121.1464257, lat = 35.6114425, purpose = "pinniped,california"),
     cleanup_table()) |> fill_values() |> check_table()
 }
 
