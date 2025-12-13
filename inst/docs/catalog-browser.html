@@ -610,15 +610,39 @@
         }
       };
       
+      // Calculate appropriate zoom level from extent size in metres
+      const calculateZoomFromExtent = (extentMetres) => {
+        // Web Mercator: at zoom 0, world is ~40M metres wide
+        // Each zoom level halves the extent shown
+        // zoom = log2(40000000 / extent) - some adjustment for comfortable viewing
+        // We want the image to fill roughly 50-70% of the viewport
+        const worldSize = 40075016; // Earth circumference in metres
+        const viewportFraction = 0.6; // Image should fill ~60% of view
+        const zoom = Math.log2(worldSize / (extentMetres / viewportFraction));
+        // Clamp to reasonable range and round
+        return Math.min(18, Math.max(8, Math.round(zoom)));
+      };
+      
+      // Convert zoom level to Google Maps altitude parameter
+      const zoomToGoogleAltitude = (zoom, extentMetres) => {
+        // Google Maps uses altitude in metres
+        // Rough approximation: at zoom 12, altitude ~30000m for ~20km extent
+        // altitude ≈ extent * 1.5 works reasonably well
+        return Math.round(extentMetres * 1.5);
+      };
+      
       // Generate external webmap links
-      const generateExternalLinks = (lat, lon, date) => {
+      const generateExternalLinks = (lat, lon, date, extentMetres = 18300) => {
         const fromTime = `${date}T00:00:00.000Z`;
         const toTime = `${date}T23:59:59.999Z`;
         
+        const zoom = calculateZoomFromExtent(extentMetres);
+        const gmapAltitude = zoomToGoogleAltitude(zoom, extentMetres);
+        
         return {
-          esa: `https://browser.dataspace.copernicus.eu/?zoom=12&lat=${lat}&lng=${lon}&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}&datasetId=S2_L2A_CDAS&cloudCoverage=30&dateMode=SINGLE&layerId=2_TONEMAPPED_NATURAL_COLOR`,
-          maxar: `https://xpress.maxar.com/?lat=${lat}&lon=${lon}&zoom=10`,
-          gmap: `https://www.google.com/maps/@${lat},${lon},30000m/data=!3m1!1e3`
+          esa: `https://browser.dataspace.copernicus.eu/?zoom=${zoom}&lat=${lat}&lng=${lon}&fromTime=${encodeURIComponent(fromTime)}&toTime=${encodeURIComponent(toTime)}&datasetId=S2_L2A_CDAS&cloudCoverage=30&dateMode=SINGLE&layerId=2_TONEMAPPED_NATURAL_COLOR`,
+          maxar: `https://xpress.maxar.com/?lat=${lat}&lon=${lon}&zoom=${Math.max(8, zoom - 2)}`,
+          gmap: `https://www.google.com/maps/@${lat},${lon},${gmapAltitude}m/data=!3m1!1e3`
         };
       };
 
@@ -903,7 +927,12 @@ ${url}`);
         const centre = getImageCentre(currentMetadata.geoTransform, width, height);
         const bbox = getBbox(currentMetadata.geoTransform, width, height);
         const latLon = utmToLatLon(centre.x, centre.y, currentMetadata.epsg);
-        const links = generateExternalLinks(latLon.lat, latLon.lon, currentImage.date);
+        // Calculate extent size (use larger dimension)
+        const extentX = Math.abs(bbox.xmax - bbox.xmin);
+        const extentY = Math.abs(bbox.ymax - bbox.ymin);
+        const extentMetres = Math.max(extentX, extentY);
+        
+        const links = generateExternalLinks(latLon.lat, latLon.lon, currentImage.date, extentMetres);
         
         setExternalLinks(links);
         setImageCoords({
