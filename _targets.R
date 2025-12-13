@@ -9,7 +9,9 @@ tar_source()
 
 set_gdal_envs()
 
-ncpus <- 24
+ncpus <- as.integer(Sys.getenv("SLURM_JOB_CPUS_PER_NODE"))
+if (is.na(ncpus)) ncpus <- 1
+
 log_directory <- "_targets/logs"
 # Ensure credentials available to workers
 if (Sys.getenv("AWS_ACCESS_KEY_ID") == "") {
