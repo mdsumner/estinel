@@ -300,6 +300,9 @@
       const [imageDimensions, setImageDimensions] = useState(null);
       const [showCoordPopup, setShowCoordPopup] = useState(false);
       const [copyFeedback, setCopyFeedback] = useState(null);
+      const [clickCoords, setClickCoords] = useState(null); // {x, y, pixel, projected, lonlat}
+      const [showClickPopup, setShowClickPopup] = useState(false);
+      const [clickPopupPos, setClickPopupPos] = useState({ x: 0, y: 0 });
       const [locationSort, setLocationSort] = useState('recent'); // 'recent' or 'alphabetical'
       const [purposeFilters, setPurposeFilters] = useState([]); // Empty = show all
       const [showPurposeDropdown, setShowPurposeDropdown] = useState(false);
@@ -608,6 +611,65 @@
         } catch (err) {
           console.error('Failed to copy:', err);
         }
+      };
+      
+      // Handle Shift+Right-click on image to show coordinates
+      // Normal right-click still shows browser context menu
+      const handleImageRightClick = (e) => {
+        // Only intercept if Shift is held
+        if (!e.shiftKey) {
+          return; // Let normal right-click through
+        }
+        
+        e.preventDefault();
+        
+        if (!currentMetadata || !imageDimensions) {
+          return;
+        }
+        
+        const img = e.target;
+        const rect = img.getBoundingClientRect();
+        
+        // Get click position relative to image (0-1 range)
+        const relX = (e.clientX - rect.left) / rect.width;
+        const relY = (e.clientY - rect.top) / rect.height;
+        
+        // Convert to pixel coordinates
+        const pixelX = Math.round(relX * imageDimensions.width);
+        const pixelY = Math.round(relY * imageDimensions.height);
+        
+        // Apply geotransform to get projected coordinates
+        // geotransform: [originX, pixelWidth, 0, originY, 0, pixelHeight]
+        const [originX, pixelWidth, , originY, , pixelHeight] = currentMetadata.geoTransform;
+        const projX = originX + pixelX * pixelWidth;
+        const projY = originY + pixelY * pixelHeight;
+        
+        // Convert to lon/lat
+        const [lon, lat] = proj4(`EPSG:${currentMetadata.epsg}`, 'EPSG:4326', [projX, projY]);
+        
+        setClickCoords({
+          pixel: { x: pixelX, y: pixelY },
+          projected: { x: projX, y: projY },
+          lonlat: { lon, lat }
+        });
+        
+        // Position popup near click, but keep it on screen
+        const popupWidth = 280;
+        const popupHeight = 200;
+        let popupX = e.clientX + 10;
+        let popupY = e.clientY + 10;
+        
+        // Adjust if would go off right edge
+        if (popupX + popupWidth > window.innerWidth) {
+          popupX = e.clientX - popupWidth - 10;
+        }
+        // Adjust if would go off bottom
+        if (popupY + popupHeight > window.innerHeight) {
+          popupY = e.clientY - popupHeight - 10;
+        }
+        
+        setClickPopupPos({ x: popupX, y: popupY });
+        setShowClickPopup(true);
       };
       
       // Calculate appropriate zoom level from extent size in metres
@@ -956,11 +1018,15 @@ ${url}`);
           if (showCoordPopup && !e.target.closest('.relative')) {
             setShowCoordPopup(false);
           }
+          // Close click coord popup on any click (except on the popup itself)
+          if (showClickPopup && !e.target.closest('.fixed')) {
+            setShowClickPopup(false);
+          }
         };
         
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-      }, [showFilterDropdown, showPurposeDropdown, showCoordPopup]);
+      }, [showFilterDropdown, showPurposeDropdown, showCoordPopup, showClickPopup]);
 
       // Close share menu when clicking outside
       useEffect(() => {
@@ -1736,6 +1802,7 @@ ${url}`);
                         const { naturalWidth, naturalHeight } = e.target;
                         setImageDimensions({ width: naturalWidth, height: naturalHeight });
                       }}
+                      onContextMenu={handleImageRightClick}
                     />
                     {showCrosshair && (
                       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
@@ -1745,6 +1812,72 @@ ${url}`);
                           <line x1="0" y1="30" x2="20" y2="30" stroke="red" strokeWidth="2" />
                           <line x1="40" y1="30" x2="60" y2="30" stroke="red" strokeWidth="2" />
                         </svg>
+                      </div>
+                    )}
+                    {showClickPopup && clickCoords && (
+                      <div 
+                        className="fixed bg-gray-800 border border-gray-600 rounded shadow-lg p-3 z-50"
+                        style={{ left: clickPopupPos.x, top: clickPopupPos.y, minWidth: '260px' }}
+                      >
+                        <div className="text-xs space-y-2">
+                          <div className="flex justify-between items-center border-b border-gray-600 pb-1 mb-2">
+                            <span className="font-semibold text-gray-300">📍 Clicked Coordinate</span>
+                            <button 
+                              onClick={() => setShowClickPopup(false)}
+                              className="text-gray-400 hover:text-gray-200 text-sm"
+                            >✕</button>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-400">Pixel (col, row):</span>
+                            <span 
+                              className="font-mono cursor-pointer hover:text-cyan-400"
+                              onClick={() => copyToClipboard(clickCoords.pixel.x + ', ' + clickCoords.pixel.y, 'Pixel')}
+                              title="Click to copy"
+                            >
+                              {clickCoords.pixel.x}, {clickCoords.pixel.y}
+                            </span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-400">Projected (x, y):</span>
+                            <span 
+                              className="font-mono cursor-pointer hover:text-cyan-400 text-[11px]"
+                              onClick={() => copyToClipboard(clickCoords.projected.x.toFixed(2) + ', ' + clickCoords.projected.y.toFixed(2), 'XY')}
+                              title="Click to copy"
+                            >
+                              {clickCoords.projected.x.toFixed(2)}, {clickCoords.projected.y.toFixed(2)}
+                            </span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-400">Lon, Lat:</span>
+                            <span 
+                              className="font-mono cursor-pointer hover:text-cyan-400"
+                              onClick={() => copyToClipboard(clickCoords.lonlat.lon.toFixed(6) + ', ' + clickCoords.lonlat.lat.toFixed(6), 'Lon/Lat')}
+                              title="Click to copy"
+                            >
+                              {clickCoords.lonlat.lon.toFixed(6)}, {clickCoords.lonlat.lat.toFixed(6)}
+                            </span>
+                          </div>
+                          
+                          <div className="border-t border-gray-700 pt-2 mt-2">
+                            <button
+                              onClick={() => copyToClipboard(JSON.stringify({
+                                pixel: [clickCoords.pixel.x, clickCoords.pixel.y],
+                                projected: [clickCoords.projected.x, clickCoords.projected.y],
+                                lonlat: [clickCoords.lonlat.lon, clickCoords.lonlat.lat]
+                              }, null, 2), 'JSON')}
+                              className="w-full px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-[11px]"
+                            >
+                              Copy all as JSON
+                            </button>
+                          </div>
+                          
+                          <div className="text-[10px] text-gray-500 text-center mt-1">
+                            Shift+Right-click for new point • Click elsewhere to close
+                          </div>
+                        </div>
                       </div>
                     )}
                     <div className="bg-gray-900 p-3 text-sm">
@@ -1943,6 +2076,10 @@ ${url}`);
                                       >
                                         {imageCoords.bbox.xmin.toFixed(2)}, {imageCoords.bbox.xmax.toFixed(2)}, {imageCoords.bbox.ymin.toFixed(2)}, {imageCoords.bbox.ymax.toFixed(2)}
                                       </div>
+                                    </div>
+                                    
+                                    <div className="text-[10px] text-gray-500 border-t border-gray-700 pt-2 mt-1">
+                                      💡 Shift+Right-click image to pick a point
                                     </div>
                                     
                                     <div className="border-t border-gray-700 pt-2">
