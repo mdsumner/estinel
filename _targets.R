@@ -58,7 +58,7 @@ tar_assign({
     default_start = "2015-01-01",
     now = Sys.time(),
     chunk_threshold_days = 365  # Bootstrap chunks into years
-  ) |> tar_target()
+  ) |> tar_target(pattern = map(spatial_window, markers))
   
   # === STAC QUERIES ===
   # Build STAC query URLs with per-location adaptive date ranges
