@@ -743,12 +743,17 @@ prepare_queries_chunked <- function(spatial_window, markers = NULL,
     query_table <- spatial_window
   }
   # Fix: Use if_else to preserve Date class
+  # query_table$start_solarday <- dplyr::if_else(
+  #   is.na(query_table$last_solarday),
+  #   as.Date(default_start),
+  #   query_table$last_solarday + 1
+  # )
+  # 
   query_table$start_solarday <- dplyr::if_else(
     is.na(query_table$last_solarday),
     as.Date(default_start),
-    query_table$last_solarday + 1
+    pmax(query_table$last_solarday + 1, as.Date("2024-01-01"))  # Floor it
   )
-  
   end_solarday <- as.Date(now) + 1
   
   # Calculate timezone buffers
