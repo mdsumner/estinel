@@ -297,6 +297,7 @@
       const [importUrl, setImportUrl] = useState('');
       const [externalLinks, setExternalLinks] = useState(null);
       const [imageCoords, setImageCoords] = useState(null);
+      const [imageDimensions, setImageDimensions] = useState(null);
       const [showCoordPopup, setShowCoordPopup] = useState(false);
       const [copyFeedback, setCopyFeedback] = useState(null);
       const [locationSort, setLocationSort] = useState('recent'); // 'recent' or 'alphabetical'
@@ -867,11 +868,16 @@ ${url}`);
         }
       }, [currentIndex, currentImage]);
 
-      // Fetch image metadata and generate external links when current image changes
+      // Store for current image metadata (geoTransform, epsg)
+      const [currentMetadata, setCurrentMetadata] = useState(null);
+      
+      // Fetch image metadata when current image changes
       useEffect(() => {
         if (!currentImage) {
           setExternalLinks(null);
           setImageCoords(null);
+          setCurrentMetadata(null);
+          setImageDimensions(null);
           return;
         }
         
@@ -881,27 +887,33 @@ ${url}`);
             : currentImage.url;
           
           const metadata = await parseAuxXml(imageUrl);
-          
-          if (metadata) {
-            const centre = getImageCentre(metadata.geoTransform);
-            const bbox = getBbox(metadata.geoTransform);
-            const latLon = utmToLatLon(centre.x, centre.y, metadata.epsg);
-            const links = generateExternalLinks(latLon.lat, latLon.lon, currentImage.date);
-            setExternalLinks(links);
-            setImageCoords({
-              epsg: metadata.epsg,
-              centre: { x: centre.x, y: centre.y },
-              centreLatLon: { lon: latLon.lon, lat: latLon.lat },
-              bbox: bbox
-            });
-          } else {
-            setExternalLinks(null);
-            setImageCoords(null);
-          }
+          setCurrentMetadata(metadata);
         };
         
         fetchMetadata();
       }, [currentImage]);
+      
+      // Calculate coordinates when we have both metadata AND image dimensions
+      useEffect(() => {
+        if (!currentMetadata || !imageDimensions || !currentImage) {
+          return;
+        }
+        
+        const { width, height } = imageDimensions;
+        const centre = getImageCentre(currentMetadata.geoTransform, width, height);
+        const bbox = getBbox(currentMetadata.geoTransform, width, height);
+        const latLon = utmToLatLon(centre.x, centre.y, currentMetadata.epsg);
+        const links = generateExternalLinks(latLon.lat, latLon.lon, currentImage.date);
+        
+        setExternalLinks(links);
+        setImageCoords({
+          epsg: currentMetadata.epsg,
+          centre: { x: centre.x, y: centre.y },
+          centreLatLon: { lon: latLon.lon, lat: latLon.lat },
+          bbox: bbox,
+          dimensions: { width, height }
+        });
+      }, [currentMetadata, imageDimensions, currentImage]);
 
       // Close dropdowns when clicking outside
       useEffect(() => {
@@ -1691,6 +1703,10 @@ ${url}`);
                       className="block"
                       style={{ imageRendering: 'pixelated' }}
                       loading="eager"
+                      onLoad={(e) => {
+                        const { naturalWidth, naturalHeight } = e.target;
+                        setImageDimensions({ width: naturalWidth, height: naturalHeight });
+                      }}
                     />
                     {showCrosshair && (
                       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
