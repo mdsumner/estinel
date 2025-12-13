@@ -1798,6 +1798,59 @@ ${url}`);
                                       {copyFeedback && <span className="ml-2 text-green-400">✓ Copied {copyFeedback}</span>}
                                     </div>
                                     
+                                    <div>
+                                      <div className="text-gray-400 mb-1">DSN:</div>
+                                      <div 
+                                        className="font-mono text-[10px] cursor-pointer hover:text-cyan-400 bg-gray-900 px-1 rounded break-all"
+                                        onClick={() => copyToClipboard('/vsicurl/' + getImageUrl(currentImage), 'DSN')}
+                                        title="Click to copy GDAL vsicurl path"
+                                      >
+                                        /vsicurl/{getImageUrl(currentImage)}
+                                      </div>
+                                    </div>
+                                    
+                                    {imageCoords.dimensions && (
+                                      <div className="border-t border-gray-700 pt-2">
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-gray-400">Size (px):</span>
+                                          <span 
+                                            className="font-mono cursor-pointer hover:text-cyan-400"
+                                            onClick={() => copyToClipboard(imageCoords.dimensions.width + ', ' + imageCoords.dimensions.height, 'Size px')}
+                                            title="Click to copy width, height"
+                                          >
+                                            {imageCoords.dimensions.width} × {imageCoords.dimensions.height}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between items-center mt-1">
+                                          <span className="text-gray-400">Resolution:</span>
+                                          <span 
+                                            className="font-mono cursor-pointer hover:text-cyan-400"
+                                            onClick={() => {
+                                              const res = Math.abs((imageCoords.bbox.xmax - imageCoords.bbox.xmin) / imageCoords.dimensions.width);
+                                              copyToClipboard(res.toFixed(1), 'Resolution');
+                                            }}
+                                            title="Click to copy resolution in metres"
+                                          >
+                                            {Math.abs((imageCoords.bbox.xmax - imageCoords.bbox.xmin) / imageCoords.dimensions.width).toFixed(1)} m
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between items-center mt-1">
+                                          <span className="text-gray-400">Size (m):</span>
+                                          <span 
+                                            className="font-mono cursor-pointer hover:text-cyan-400"
+                                            onClick={() => {
+                                              const xSize = Math.abs(imageCoords.bbox.xmax - imageCoords.bbox.xmin);
+                                              const ySize = Math.abs(imageCoords.bbox.ymax - imageCoords.bbox.ymin);
+                                              copyToClipboard(xSize.toFixed(0) + ', ' + ySize.toFixed(0), 'Size m');
+                                            }}
+                                            title="Click to copy size in metres"
+                                          >
+                                            {Math.abs(imageCoords.bbox.xmax - imageCoords.bbox.xmin).toFixed(0)} × {Math.abs(imageCoords.bbox.ymax - imageCoords.bbox.ymin).toFixed(0)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+                                    
                                     <div className="flex justify-between items-center">
                                       <span className="text-gray-400">CRS:</span>
                                       <span 
@@ -1810,7 +1863,7 @@ ${url}`);
                                     </div>
                                     
                                     <div className="border-t border-gray-700 pt-2">
-                                      <div className="text-gray-400 mb-1">Centre (projected):</div>
+                                      <div className="text-gray-400 mb-1">Centre (projected x,y):</div>
                                       <div className="flex gap-2">
                                         <span 
                                           className="font-mono text-[11px] cursor-pointer hover:text-cyan-400 bg-gray-900 px-1 rounded"
@@ -1823,7 +1876,7 @@ ${url}`);
                                     </div>
                                     
                                     <div className="border-t border-gray-700 pt-2">
-                                      <div className="text-gray-400 mb-1">Centre (lat/lon):</div>
+                                      <div className="text-gray-400 mb-1">Centre (lon,lat):</div>
                                       <div className="flex gap-2">
                                         <span 
                                           className="font-mono text-[11px] cursor-pointer hover:text-cyan-400 bg-gray-900 px-1 rounded"
@@ -1866,6 +1919,10 @@ ${url}`);
                                     <div className="border-t border-gray-700 pt-2">
                                       <button
                                         onClick={() => copyToClipboard(JSON.stringify({
+                                          dsn: '/vsicurl/' + getImageUrl(currentImage),
+                                          size_px: imageCoords.dimensions ? [imageCoords.dimensions.width, imageCoords.dimensions.height] : null,
+                                          resolution_m: imageCoords.dimensions ? Math.abs((imageCoords.bbox.xmax - imageCoords.bbox.xmin) / imageCoords.dimensions.width) : null,
+                                          size_m: imageCoords.dimensions ? [Math.abs(imageCoords.bbox.xmax - imageCoords.bbox.xmin), Math.abs(imageCoords.bbox.ymax - imageCoords.bbox.ymin)] : null,
                                           crs: 'EPSG:' + imageCoords.epsg,
                                           centre_xy: [imageCoords.centre.x, imageCoords.centre.y],
                                           centre_lonlat: [imageCoords.centreLatLon.lon, imageCoords.centreLatLon.lat],
