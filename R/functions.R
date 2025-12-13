@@ -495,6 +495,7 @@ define_locations_table <- function() {
     tibble::tibble(location = "Heard_Island_Atlas_Cove_2", lon = 73.3868, lat = -53.0243, radiusx = 5000, radiusy = 5000, purpose = "base,heard,island"),
     tibble::tibble(location = "Heard_Island_60m", lon = 73.5028, lat = -53.0914, resolution = 60, radiusx = 24000, radiusy = 14000, purpose = "heard,subantarctic,island"),
     tibble::tibble(location = "Heard_Island_180m", lon = 73.5028, lat = -53.0914, resolution = 180, radiusx = 72000, radiusy = 72000, purpose = "heard,subantarctic,island"),
+    tibble::tibble(location = "Heard_Island_360m", lon = 73.5028, lat = -53.0914, resolution = 180*2, radiusx = 96000*2, radiusy = 96000*2, purpose = "heard,subantarctic,island"),
     
     tibble::tibble(location = "Heard_Island_Big_Ben", lon = 73.5167, lat = -53.1000, purpose = "heard,subantarctic,island"), 
     tibble::tibble(location = "Heard_Island_Spit_Bay", lon = 73.7189, lat = -53.1141, purpose = "heard,subantarctic,island"),
