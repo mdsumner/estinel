@@ -1874,6 +1874,17 @@ ${url}`);
                             </span>
                           </div>
                           
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-400">Lat,Lon:</span>
+                            <span 
+                              className="font-mono cursor-pointer hover:text-cyan-400 text-[11px]"
+                              onClick={() => copyToClipboard(clickCoords.lonlat.lat.toFixed(6) + ',' + clickCoords.lonlat.lon.toFixed(6), 'Lat,Lon (Google Maps)')}
+                              title="Click to copy - paste into Google Maps"
+                            >
+                              {clickCoords.lonlat.lat.toFixed(6)},{clickCoords.lonlat.lon.toFixed(6)}
+                            </span>
+                          </div>
+                          
                           <div className="border-t border-gray-700 pt-2 mt-2">
                             <button
                               onClick={() => copyToClipboard(JSON.stringify({
