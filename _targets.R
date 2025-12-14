@@ -55,7 +55,7 @@ tar_assign({
   query_specs <- prepare_queries_chunked(  # <-- Changed function!
     spatial_window, 
     markers,
-    default_start = "2015-01-01",
+    default_start = "2025-01-01",
     now = Sys.time(),
     chunk_threshold_days = 365  # Bootstrap chunks into years
   ) |> tar_target(pattern = map(spatial_window, markers))
@@ -175,14 +175,14 @@ tar_assign({
   pagejson <- write_react_json(catalog_table) |> tar_force(force = TRUE)
   web <- update_react(pagejson, rootdir) |> tar_force(force = TRUE)
   
-  browser_update <- check_and_update_browser(
-    local_path = "inst/docs/catalog-browser.html",
-    remote_url = "https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html",
-    bucket = "estinel"
-  ) |>
-    tar_target(
-      cue = tar_cue(mode = "always")  # Always check (but only upload if needed)
-    )
+#  browser_update <- check_and_update_browser(
+#    local_path = "inst/docs/catalog-browser.html",
+#    remote_url = "https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html",
+#    bucket = "estinel"
+#  ) |>
+#    tar_target(
+#      cue = tar_cue(mode = "always")  # Always check (but only upload if needed)
+#    )
   
   # === UPDATE MARKERS ===
   # After successful processing, update markers with latest solarday

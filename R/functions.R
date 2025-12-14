@@ -1,4 +1,4 @@
-#' Check if browser HTML needs updating
+#F' Check if browser HTML needs updating
 #'
 #' @param local_path Character. Path to local browser HTML
 #' @param remote_url Character. URL of deployed browser
@@ -756,7 +756,7 @@ prepare_queries_chunked <- function(spatial_window, markers = NULL,
   query_table$start_solarday <- dplyr::if_else(
     is.na(query_table$last_solarday),
     as.Date(default_start),
-    pmax(query_table$last_solarday + 1, as.Date("2015-01-01"))  # Floor it
+    pmax(query_table$last_solarday + 1, as.Date("2024-01-01"))  # Floor it
   )
   end_solarday <- as.Date(now) + 1
   
