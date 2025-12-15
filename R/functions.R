@@ -1,4 +1,4 @@
-#F' Check if browser HTML needs updating
+#' Check if browser HTML needs updating
 #'
 #' @param local_path Character. Path to local browser HTML
 #' @param remote_url Character. URL of deployed browser
@@ -500,6 +500,8 @@ define_locations_table <- function() {
     tibble::tibble(location = "Heard_Island_Big_Ben", lon = 73.5167, lat = -53.1000, purpose = "heard,subantarctic,island"), 
     tibble::tibble(location = "Heard_Island_Big_Ben_2", lon = 73.5167, lat = -53.1000, radiusx = 6000, radiusy = 6000, purpose = "heard,subantarctic,island"), 
     
+tibble::tibble(location = "Cape_Grim", lat = -40.6833327, lon = 144.6833333,purpose = "tasmania"),
+
     tibble::tibble(location = "Heard_Island_Spit_Bay", lon = 73.7189, lat = -53.1141, purpose = "heard,subantarctic,island"),
     tibble::tibble(location = "Heard_Island_Spit_Bay_2", lon = 73.7189, lat = -53.1141, radiusx = 5000, radiusy = 5000, purpose = "heard,subantarctic,island"),
     tibble::tibble(location = "Heard_Island_Compton_Lagoon", lon = 73.6107, lat = -53.0581, purpose = "heard,island"),
@@ -508,7 +510,7 @@ define_locations_table <- function() {
     tibble::tibble(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = "macquarie,subantarctic,island,tasmania"),
     tibble::tibble(location = "Macquarie_Island_40m", lon = 158.5766275, lat = -54.6071339, radiusx = 48000, radiusy = 48000, resolution = 40, purpose = "macquarie,subantarctic,island,tasmania"),
     tibble::tibble(location = "Bowman_Island_20m", lon = 103.117479, lat = -65.2992428, radiusx = 20000, radiusy = 20000, purpose  = "island,antarctica"),
-    tibble::tibble(location = "Kiribati", lon = -157.4350819, lat = 1.8926496, purpose = "island"),
+    tibble::tibble(location = "Kiribati_1", lon = -157.43508, lat = 1.8927, purpose = "island"),
     tibble::tibble(location = "Scullin_Monolith", lon = 66.7189, lat = -67.7935, purpose = "antarctica"), 
     tibble::tibble(location = "Concordia_Station", lon = 123.3322, lat = -75.0997, purpose = "antarctica"), 
     tibble::tibble(location = "Dome_C_North", lon = 122.5206, lat = -75.3413, purpose = "base,antarctica"), 
@@ -546,7 +548,7 @@ tibble::tibble(location = "New_Brighton", lon = 153.57131, lat = -28.538562, pur
     tibble::tibble(location = "Eyjafjordur", lon = -18.2 + 0.073,  lat =65.85, radiusx = 5000, radiusy = 5000, purpose = "cetacean,island,iceland"),
     tibble::tibble(location = "Eyjafjordur_Fjord", lon = -18.2 + 0.073,  lat =65.85, radiusx = 12000, radiusy = 12000, resolution = 20, purpose = "cetacean,island,iceland"),
     tibble::tibble(location = "San_Simeon", lon = -121.1464257, lat = 35.6114425, purpose = "pinniped,california"),
-    cleanup_table()) |> fill_values() |> check_table()
+    cleanup_table()) |> fill_values() |> dplyr::distinct(location, .keep_all = TRUE) |> check_table()
 }
 
 fill_values <- function(x) {
@@ -747,18 +749,23 @@ prepare_queries_chunked <- function(spatial_window, markers = NULL,
   } else {
     query_table <- spatial_window
   }
+
+  print(sprintf("about to set start_solarday for %s", paste0(spatial_window$location, collapse = ",")))
   # Fix: Use if_else to preserve Date class
   # query_table$start_solarday <- dplyr::if_else(
   #   is.na(query_table$last_solarday),
   #   as.Date(default_start),
   #   query_table$last_solarday + 1
   # )
+  #print(sprintf("finished %s", spatial_window$location))
   # 
   query_table$start_solarday <- dplyr::if_else(
     is.na(query_table$last_solarday),
     as.Date(default_start),
     pmax(query_table$last_solarday + 1, as.Date("2024-01-01"))  # Floor it
   )
+print(sprintf("finished %s", spatial_window$location))
+
   end_solarday <- as.Date(now) + 1
   
   # Calculate timezone buffers

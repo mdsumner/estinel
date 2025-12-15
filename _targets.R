@@ -40,7 +40,7 @@ tar_assign({
   
   # === LOCATION SETUP ===
   # Define locations from code and Excel files
-  tabl <- define_locations_table()  |> dplyr::distinct(location) |>  tar_target()
+  tabl <- define_locations_table()   |>  tar_target()
   
   # Compute spatial windows (UTM CRS, extents in projected and lonlat)
   spatial_window <- mk_spatial_window(tabl) |> 
