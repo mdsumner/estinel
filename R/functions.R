@@ -607,17 +607,10 @@ filter_new_solardays <- function(stac_table) {
 #   x
 # }
 
-join_stac_results <- function(querytable, stac_json_list) {
-  # Convert list to data frame with keys
-  stac_df <- dplyr::bind_rows(lapply(stac_json_list, function(x) {
-    data.frame(location = x$location, SITE_ID = x$SITE_ID, 
-               chunk_id = x$chunk_id, stringsAsFactors = FALSE)
-  }))
-  stac_df$js <- lapply(stac_json_list, `[[`, "js")
-  
-  # Join by keys instead of position
-  dplyr::left_join(querytable, stac_df, by = c("location", "SITE_ID", "chunk_id"))
-}
+
+
+#' Fetch STAC JSON for a single row (used in mapped target)
+#' Returns identifying info along with results for safe joining
 getstac_json <- function(x, trigger) {
   js <- try(jsonlite::fromJSON(x$query))
   
@@ -635,6 +628,27 @@ getstac_json <- function(x, trigger) {
   result
 }
 
+
+#' Join STAC results back to querytable by key
+join_stac_results <- function(querytable, stac_json_list) {
+  # Convert list to data frame with keys
+  stac_df <- dplyr::bind_rows(lapply(stac_json_list, function(x) {
+    data.frame(
+      location = x$location, 
+      SITE_ID = x$SITE_ID, 
+      chunk_id = x$chunk_id, 
+      stringsAsFactors = FALSE
+    )
+  }))
+  stac_df$js <- lapply(stac_json_list, `[[`, "js")
+  
+  # Join by keys instead of position
+  result <- dplyr::left_join(querytable, stac_df, 
+                             by = c("location", "SITE_ID", "chunk_id"))
+  
+  message("Joined ", sum(!is.na(result$js)), " of ", nrow(result), " queries with results")
+  result
+}
 getstac_query_adaptive <- function(query_specs, provider, collection, limit = 300) {
   llnames <- c("lonmin", "lonmax", "latmin", "latmax")
   
@@ -1699,3 +1713,173 @@ upload_catalog_to_release <- function(json_file,
     FALSE
   })
 }
+
+
+# ==============================================================================
+# NON-BRANCHED VERSIONS - Process full tables
+# ==============================================================================
+
+#' Read all markers at once (non-branched version)
+read_markers_all <- function(bucket, spatial_window) {
+  set_gdal_envs()
+  
+  markers_list <- vector("list", nrow(spatial_window))
+  
+  for (i in seq_len(nrow(spatial_window))) {
+    site_id <- spatial_window$SITE_ID[i]
+    location <- spatial_window$location[i]
+    marker_path <- sprintf("/vsis3/%s/markers/%s.json", bucket, site_id)
+    
+    if (gdalraster::vsi_stat(marker_path, "exists")) {
+      tryCatch({
+        con <- new(gdalraster::VSIFile, marker_path, "r")
+        json_bytes <- con$ingest(-1)
+        con$close()
+        
+        marker_data <- jsonlite::fromJSON(rawToChar(json_bytes))
+        markers_list[[i]] <- data.frame(
+          SITE_ID = site_id,
+          location = marker_data$location,
+          last_solarday = as.Date(marker_data$last_solarday),
+          stringsAsFactors = FALSE
+        )
+      }, error = function(e) {
+        markers_list[[i]] <- data.frame(
+          SITE_ID = site_id,
+          location = location,
+          last_solarday = as.Date(NA),
+          stringsAsFactors = FALSE
+        )
+      })
+    } else {
+      markers_list[[i]] <- data.frame(
+        SITE_ID = site_id,
+        location = location,
+        last_solarday = as.Date(NA),
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  
+  dplyr::bind_rows(markers_list)
+}
+
+
+#' Prepare chunked queries for ALL locations at once
+#' 
+#' Takes full spatial_window and markers tables, returns expanded table
+#' with one row per location-chunk combination.
+prepare_queries_chunked_all <- function(spatial_window, 
+                                        markers = NULL, 
+                                        default_start = "2015-01-01", 
+                                        now = Sys.time(),
+                                        chunk_threshold_days = 365) {
+  
+  # Join markers to spatial_window
+  if (!is.null(markers) && nrow(markers) > 0) {
+    query_table <- dplyr::left_join(spatial_window, markers, 
+                                    by = c("SITE_ID", "location"))
+  } else {
+    query_table <- spatial_window
+    query_table$last_solarday <- as.Date(NA)
+  }
+  
+  # Set start date: use marker if exists, otherwise default_start
+  query_table$start_solarday <- dplyr::if_else(
+    is.na(query_table$last_solarday),
+    as.Date(default_start),
+    pmax(query_table$last_solarday + 1, as.Date("2024-01-01"))
+  )
+  
+  end_solarday <- as.Date(now) + 1
+  
+  # Calculate timezone buffers
+  query_table$offset_hours <- query_table$lon / 15
+  query_table$buffer_hours <- abs(query_table$offset_hours) + 12
+  
+  # Calculate days span to determine chunking need
+  query_table$days_span <- as.numeric(end_solarday - query_table$start_solarday)
+  query_table$needs_chunking <- query_table$days_span > chunk_threshold_days
+  
+  # Process each location, expanding chunks as needed
+  result_list <- vector("list", nrow(query_table))
+  
+  for (i in seq_len(nrow(query_table))) {
+    row <- query_table[i, ]
+    
+    if (!row$needs_chunking) {
+      # No chunking needed - single query
+      row$query_start_utc <- as.POSIXct(row$start_solarday, tz = "UTC") - 
+        (row$buffer_hours * 3600)
+      row$query_end_utc <- as.POSIXct(end_solarday + 1, tz = "UTC") + 
+        (row$buffer_hours * 3600)
+      row$start <- format(row$query_start_utc, "%Y-%m-%dT%H:%M:%SZ")
+      row$end <- format(row$query_end_utc, "%Y-%m-%dT%H:%M:%SZ")
+      row$chunk_id <- 1L
+      result_list[[i]] <- row
+      
+    } else {
+      # Chunking needed - create yearly chunks
+      start_date <- row$start_solarday
+      chunk_starts <- seq(start_date, end_solarday, by = "1 year")
+      
+      if (chunk_starts[length(chunk_starts)] < end_solarday) {
+        chunk_starts <- c(chunk_starts, end_solarday)
+      }
+      
+      chunk_rows <- vector("list", length(chunk_starts) - 1)
+      
+      for (j in seq_len(length(chunk_starts) - 1)) {
+        chunk_row <- row
+        chunk_start <- chunk_starts[j]
+        chunk_end <- min(chunk_starts[j + 1] - 1, end_solarday)
+        
+        chunk_row$query_start_utc <- as.POSIXct(chunk_start, tz = "UTC") - 
+          (chunk_row$buffer_hours * 3600)
+        chunk_row$query_end_utc <- as.POSIXct(chunk_end + 1, tz = "UTC") + 
+          (chunk_row$buffer_hours * 3600)
+        chunk_row$start <- format(chunk_row$query_start_utc, "%Y-%m-%dT%H:%M:%SZ")
+        chunk_row$end <- format(chunk_row$query_end_utc, "%Y-%m-%dT%H:%M:%SZ")
+        chunk_row$chunk_id <- as.integer(j)
+        
+        chunk_rows[[j]] <- chunk_row
+      }
+      
+      result_list[[i]] <- dplyr::bind_rows(chunk_rows)
+    }
+  }
+  
+  # Combine all and clean up
+  result <- dplyr::bind_rows(result_list)
+  result$needs_chunking <- NULL
+  result$days_span <- NULL
+  
+  message("Prepared ", nrow(result), " queries for ", 
+          length(unique(result$location)), " locations")
+  
+  result
+}
+
+
+#' Build STAC query URLs for full table
+getstac_query_adaptive_all <- function(query_specs, provider, collection, limit = 300) {
+  llnames <- c("lonmin", "lonmax", "latmin", "latmax")
+  
+  query_specs$provider <- provider
+  query_specs$collection <- collection
+  query_specs$query <- NA_character_
+  
+  for (i in seq_len(nrow(query_specs))) {
+    llex <- unlist(query_specs[i, llnames])
+    date <- c(query_specs$start[i], query_specs$end[i])
+    
+    href <- sds::stacit(llex, date, limit = limit, 
+                        collections = collection, 
+                        provider = provider)
+    query_specs$query[i] <- href
+  }
+  
+  message("Built ", nrow(query_specs), " STAC queries")
+  query_specs
+}
+

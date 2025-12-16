@@ -47,34 +47,35 @@ tar_assign({
     tar_target(pattern = map(tabl))
   
   # === MARKER-BASED INCREMENTAL PROCESSING ===
-  # Read existing markers to determine start date per location
-  # If no marker exists, will start from 2015-01-01
-  markers <- read_markers(bucket, spatial_window) |> tar_target()
+  # Read existing markers (returns full table, one row per location)
+  markers <- read_markers_all(bucket, spatial_window) |> tar_target()
   
-  # Use chunked query preparation
-  query_specs <- prepare_queries_chunked(  # <-- Changed function!
+  # Prepare queries with chunking (returns expanded table with all chunks)
+  query_specs <- prepare_queries_chunked_all(
     spatial_window, 
     markers,
     default_start = "2015-01-01",
     now = Sys.time(),
-    chunk_threshold_days = 365  # Bootstrap chunks into years
-  ) |> tar_target(pattern = map(spatial_window, markers))
+    chunk_threshold_days = 365
+  ) |> tar_target()  # Single target, no mapping
   
   # === STAC QUERIES ===
-  # Build STAC query URLs with per-location adaptive date ranges
-  # No more yearly chunking - queries are precise to what's needed
-  querytable <- getstac_query_adaptive(query_specs, provider, collection) |> 
-    tar_target(pattern = map(query_specs))
+  # Build STAC query URLs (adds query column to all rows)
+  querytable <- getstac_query_adaptive_all(query_specs, provider, collection) |> 
+    tar_target()  # Single target, no mapping
   
-  # Execute STAC queries
-  stac_json_list <- getstac_json(querytable) |> 
-    tar_target(pattern = map(querytable), iteration = "list")
+  # Branch here for parallel STAC fetching
+  # Need to group querytable first
+  querytable_grouped <- querytable |> 
+    dplyr::mutate(row_id = dplyr::row_number()) |>
+    tar_group() |>
+    tar_target(iteration = "group")
   
-  # Join query metadata with results
-  #stac_json_table <- join_stac_json(querytable, stac_json_list) |> 
-  #  tar_target()
-  #stac_json_table <- mutate(querytable, js = list(stac_json_list)) |> tar_target(pattern = map(querytable, stac_json_list))
+  # Execute STAC queries (one per row)
+  stac_json_list <- getstac_json(querytable_grouped) |> 
+    tar_target(pattern = map(querytable_grouped), iteration = "list")
   
+  # Join results back (by key, not position)
   stac_json_table <- join_stac_results(querytable, stac_json_list) |> 
     tar_target()
   
