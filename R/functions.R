@@ -499,9 +499,14 @@ define_locations_table <- function() {
     tibble::tibble(location = "Burnie", lon = 145.912, lat = -41.050, radiusx = 5000, radiusy = 5000, purpose = "tasmania,base"),
     tibble::tibble(location = "Heard_Island_Big_Ben", lon = 73.5167, lat = -53.1000, purpose = "heard,subantarctic,island"), 
     tibble::tibble(location = "Heard_Island_Big_Ben_2", lon = 73.5167, lat = -53.1000, radiusx = 6000, radiusy = 6000, purpose = "heard,subantarctic,island"), 
-    
+    tibble::tibble(location  = "Heard_Island_Compton_Lagoon_water", lon = 73.641231, lat = -53.035654, purpose = "heard,subantarctic,island"),
 tibble::tibble(location = "Cape_Grim", lat = -40.6833327, lon = 144.6833333,purpose = "tasmania"),
 
+tibble::tibble(location = "Wilkins_Aerodrome", lon = 111.52361, lat = -66.69083, purpose = "antarctica"), 
+tibble::tibble(location = "Punta_Arenas_Aerodrome", lon = -70.8495728, lat = -53.0040603, purpose = "chile"), 
+tibble::tibble(location = "Cambridge_Aerodrome", lon = 147.4739782, lat = -42.8299091, purpose = "tasmania"),
+tibble::tibble(location = "Wilkes_Station", lon = 110.526862, lat = -66.256951, purpose = "antarctica"),
+tibble::tibble(location = "McMurdo_Station", lon = 166.5280322, lat = -77.8400482, purpose = "antarctica,usa"), 
     tibble::tibble(location = "Heard_Island_Spit_Bay", lon = 73.7189, lat = -53.1141, purpose = "heard,subantarctic,island"),
     tibble::tibble(location = "Heard_Island_Spit_Bay_2", lon = 73.7189, lat = -53.1141, radiusx = 5000, radiusy = 5000, purpose = "heard,subantarctic,island"),
     tibble::tibble(location = "Heard_Island_Compton_Lagoon", lon = 73.6107, lat = -53.0581, purpose = "heard,island"),
