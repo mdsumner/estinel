@@ -501,6 +501,7 @@ define_locations_table <- function() {
     tibble::tibble(location = "Heard_Island_Big_Ben_2", lon = 73.5167, lat = -53.1000, radiusx = 6000, radiusy = 6000, purpose = "heard,subantarctic,island"), 
     tibble::tibble(location  = "Heard_Island_Compton_Lagoon_water", lon = 73.641231, lat = -53.035654, purpose = "heard,subantarctic,island"),
 tibble::tibble(location = "Cape_Grim", lat = -40.6833327, lon = 144.6833333,purpose = "tasmania"),
+tibble::tibble(location = "Bunger_Hills", lon = 100.783333, lat = -66.283333, purpose = "antarctica"),
 
 tibble::tibble(location = "Wilkins_Aerodrome", lon = 111.52361, lat = -66.69083, purpose = "antarctica"), 
 tibble::tibble(location = "Punta_Arenas_Aerodrome", lon = -70.8495728, lat = -53.0040603, purpose = "chile"), 
@@ -1574,7 +1575,7 @@ write_react_json <- function(viewtable) {
   for (j in 1:length(locations)) {
     
     imagetable <- dplyr::filter(viewtable, location == locations[j])
-    SITE_NAME <- imagetable$location[j]
+    SITE_NAME <- imagetable$location[1]
     SITE_ID <- imagetable$SITE_ID[1]
     
     # ADDED: Parse CSV string to JSON array
