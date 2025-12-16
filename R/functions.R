@@ -377,6 +377,7 @@ build_scl_dsn <- function(assets, div = NULL, root = tempdir()) {
 # 6. Easier to optimize (improve once, benefits all)
 # 7. Maintains backward compatibility via wrappers
 build_image_png <- function(x, force = FALSE, type) {
+  set_gdal_envs()
   test <- try({
     dsn <- x[["outfile"]]
     if (length(dsn) > 1) {
@@ -420,6 +421,7 @@ build_image_png <- function(x, force = FALSE, type) {
 
 
 build_thumb <- function(dsn, force = FALSE) {
+   set_gdal_envs()
   test <- try({
     if (is.na(dsn)) {
       print("bad dsn!!")

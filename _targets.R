@@ -55,7 +55,7 @@ tar_assign({
   query_specs <- prepare_queries_chunked(  # <-- Changed function!
     spatial_window, 
     markers,
-    default_start = "2025-01-01",
+    default_start = "2015-01-01",
     now = Sys.time(),
     chunk_threshold_days = 365  # Bootstrap chunks into years
   ) |> tar_target(pattern = map(spatial_window, markers))
