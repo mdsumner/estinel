@@ -68,6 +68,7 @@ tar_assign({
   # Need to group querytable first
   querytable_grouped <- querytable |> 
     dplyr::mutate(row_id = dplyr::row_number()) |>
+    dplyr::group_by(row_id) |>
     tar_group() |>
     tar_target(iteration = "group")
   
