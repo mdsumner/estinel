@@ -627,7 +627,7 @@ getstac_json <- function(x, trigger) {
     chunk_id = x$chunk_id,
     js = if (inherits(js, "try-error") || (length(js$features) < 1) || 
              (!is.null(js$numberReturned) && js$numberReturned < 1)) {
-      list()
+      list(empty = TRUE)
     } else {
       js
     }
