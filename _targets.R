@@ -73,7 +73,11 @@ tar_assign({
   # Join query metadata with results
   #stac_json_table <- join_stac_json(querytable, stac_json_list) |> 
   #  tar_target()
-  stac_json_table <- mutate(querytable, js = list(stac_json_list)) |> tar_target(pattern = map(querytable, stac_json_list))
+  #stac_json_table <- mutate(querytable, js = list(stac_json_list)) |> tar_target(pattern = map(querytable, stac_json_list))
+  
+  stac_json_table <- join_stac_results(querytable, stac_json_list) |> 
+    tar_target()
+  
   # Process STAC results: extract asset URLs, compute solarday
   stac_tables <- process_stac_table2(stac_json_table) |> 
     tar_target(pattern = map(stac_json_table))

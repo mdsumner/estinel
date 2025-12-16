@@ -597,16 +597,43 @@ filter_new_solardays <- function(stac_table) {
   stac_table[vapply(stac_table$assets, nrow, integer(1)) > 0, ]
 }
 
+# getstac_json <- function(x, trigger) {
+#   js <- try(jsonlite::fromJSON(x$query))
+#   if (inherits(js, "try-error") || (length(js$features) < 1) || (!is.null(js$numberReturned) &&js$numberReturned < 1)) {
+#     return(list())
+#   } else {
+#     return(js)
+#   }
+#   x
+# }
+
+join_stac_results <- function(querytable, stac_json_list) {
+  # Convert list to data frame with keys
+  stac_df <- dplyr::bind_rows(lapply(stac_json_list, function(x) {
+    data.frame(location = x$location, SITE_ID = x$SITE_ID, 
+               chunk_id = x$chunk_id, stringsAsFactors = FALSE)
+  }))
+  stac_df$js <- lapply(stac_json_list, `[[`, "js")
+  
+  # Join by keys instead of position
+  dplyr::left_join(querytable, stac_df, by = c("location", "SITE_ID", "chunk_id"))
+}
 getstac_json <- function(x, trigger) {
   js <- try(jsonlite::fromJSON(x$query))
-  if (inherits(js, "try-error") || (length(js$features) < 1) || (!is.null(js$numberReturned) &&js$numberReturned < 1)) {
-    return(list())
-  } else {
-    return(js)
-  }
-  x
+  
+  result <- list(
+    location = x$location,
+    SITE_ID = x$SITE_ID,
+    chunk_id = x$chunk_id,
+    js = if (inherits(js, "try-error") || (length(js$features) < 1) || 
+             (!is.null(js$numberReturned) && js$numberReturned < 1)) {
+      list()
+    } else {
+      js
+    }
+  )
+  result
 }
-
 
 getstac_query_adaptive <- function(query_specs, provider, collection, limit = 300) {
   llnames <- c("lonmin", "lonmax", "latmin", "latmax")
