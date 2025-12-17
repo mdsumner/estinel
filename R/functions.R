@@ -504,7 +504,7 @@ define_locations_table <- function() {
     tibble::tibble(location  = "Heard_Island_Compton_Lagoon_water", lon = 73.641231, lat = -53.035654, purpose = "heard,subantarctic,island"),
 tibble::tibble(location = "Cape_Grim", lat = -40.6833327, lon = 144.6833333,purpose = "tasmania"),
 tibble::tibble(location = "Bunger_Hills", lon = 100.783333, lat = -66.283333, purpose = "antarctica"),
-
+tibble::tibble(location = "Lonnavale", lon = 146.765534, lat = -42.973019, purpose = "tasmania"),
 tibble::tibble(location = "Wilkins_Aerodrome", lon = 111.52361, lat = -66.69083, purpose = "antarctica"), 
 tibble::tibble(location = "Punta_Arenas_Aerodrome", lon = -70.8495728, lat = -53.0040603, purpose = "chile"), 
 tibble::tibble(location = "Cambridge_Aerodrome", lon = 147.4739782, lat = -42.8299091, purpose = "tasmania"),
