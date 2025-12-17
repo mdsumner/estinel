@@ -520,7 +520,7 @@ tibble::tibble(location = "McMurdo_Station", lon = 166.5280322, lat = -77.840048
     tibble::tibble(location = "Macquarie_Island_Station", lon = 158.9384, lat = -54.4987, purpose = "base,macquarie,subantarctic,island,tasmania"),
     tibble::tibble(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = "macquarie,subantarctic,island,tasmania"),
     tibble::tibble(location = "Macquarie_Island_40m", lon = 158.5766275, lat = -54.6071339, radiusx = 48000, radiusy = 48000, resolution = 40, purpose = "macquarie,subantarctic,island,tasmania"),
-    tibble::tibble(location = "Bowman_Island_20m", lon = 103.117479, lat = -65.2992428, radiusx = 20000, radiusy = 20000, purpose  = "island,antarctica"),
+    tibble::tibble(location = "Bowman_Island_20m", lon = 103.117479, lat = -65.2992428, radiusx = 25000, radiusy = 25000, resolution = 50, purpose  = "island,antarctica"),
     tibble::tibble(location = "Kiribati_1", lon = -157.43508, lat = 1.8927, purpose = "island"),
     tibble::tibble(location = "Scullin_Monolith", lon = 66.7189, lat = -67.7935, purpose = "antarctica"), 
     tibble::tibble(location = "Concordia_Station", lon = 123.3322, lat = -75.0997, purpose = "antarctica"), 
