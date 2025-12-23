@@ -517,7 +517,12 @@ tibble::tibble(location = "McMurdo_Station", lon = 166.5280322, lat = -77.840048
     tibble::tibble(location = "Heard_Island_Spit_Bay_2", lon = 73.7189, lat = -53.1141, radiusx = 5000, radiusy = 5000, purpose = "heard,subantarctic,island"),
     tibble::tibble(location = "Heard_Island_Compton_Lagoon", lon = 73.6107, lat = -53.0581, purpose = "heard,island"),
     tibble::tibble(location = "Mawson_Station", lon = 62.8742, lat = -67.6033, purpose = "base,mawson,antarctica"),
-    tibble::tibble(location = "Macquarie_Island_Station", lon = 158.9384, lat = -54.4987, purpose = "base,macquarie,subantarctic,island,tasmania"),
+    
+tibble::tibble(location = "Mawson_Station_20m", lon = 62.8742, lat = -67.6033, radiusx = 6000, radiusy = 6000, resolution = 20,  purpose = "base,mawson,antarctica"),
+tibble::tibble(location = "Mawson_Station_30m", lon = 62.8742, lat = -67.6033, radiusx = 15000, radiusy = 15000, resolution = 30,  purpose = "base,mawson,antarctica"),
+
+
+tibble::tibble(location = "Macquarie_Island_Station", lon = 158.9384, lat = -54.4987, purpose = "base,macquarie,subantarctic,island,tasmania"),
     tibble::tibble(location = "Macquarie_Island_South", lon = 158.8252, lat = -54.7556, purpose = "macquarie,subantarctic,island,tasmania"),
     tibble::tibble(location = "Macquarie_Island_40m", lon = 158.5766275, lat = -54.6071339, radiusx = 48000, radiusy = 48000, resolution = 40, purpose = "macquarie,subantarctic,island,tasmania"),
     tibble::tibble(location = "Bowman_Island_20m", lon = 103.117479, lat = -65.2992428, radiusx = 25000, radiusy = 25000, resolution = 50, purpose  = "island,antarctica"),
@@ -1415,7 +1420,8 @@ build_image_png_tracked <- function(x, force = FALSE, type,
 #' @return List with thumb_path and marker
 build_thumb_tracked <- function(dsn, force = FALSE,
                                 marker_dir = "_targets/s3_markers") {
-  
+
+set_gdal_envs()  
   # Build the thumbnail
   thumb_path <- build_thumb(dsn, force = force)
   
@@ -1495,7 +1501,7 @@ build_catalog_from_s3 <- function(bucket = "estinel",
                                   prefix = "sentinel-2-c1-l2a",
                                   locations_table, 
                                   wait_for = NULL) {
-  
+set_gdal_envs()  
   message("Listing S3 bucket: ", bucket, "/", prefix)
   
   # List all files (include "pawsey/" alias prefix!)
