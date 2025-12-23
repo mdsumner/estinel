@@ -505,7 +505,15 @@ define_locations_table <- function() {
 tibble::tibble(location = "Cape_Grim", lat = -40.6833327, lon = 144.6833333,purpose = "tasmania"),
 tibble::tibble(location = "Bunger_Hills", lon = 100.783333, lat = -66.283333, purpose = "antarctica"),
 tibble::tibble(location = "Lonnavale", lon = 146.765534, lat = -42.973019, radiusx = 6000, radiusy = 6000, purpose = "tasmania"),
+tibble::tibble(
 
+location = "South Sandwich Islands",
+lon = -26.5,
+lat = -57.75,
+radius = 150000,
+radius2 = 150000,
+resolution = 120, purpose = "island"
+),
 tibble::tibble(location = "Meunna", lon = 145.4775185, lat = -41.0841384, radiusx = 6000, radiusy = 6000, purpose = "tasmania"),
 
 tibble::tibble(location = "Wilkins_Aerodrome", lon = 111.52361, lat = -66.69083, purpose = "antarctica"), 
