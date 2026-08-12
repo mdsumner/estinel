@@ -10,7 +10,7 @@ tar_source()
 set_gdal_envs()
 
 #ncpus <- as.integer(Sys.getenv("SLURM_JOB_CPUS_PER_NODE")) - 4
-ncpus <- 14
+ncpus <- 6
 
 if (is.na(ncpus)) ncpus <- 1
 
