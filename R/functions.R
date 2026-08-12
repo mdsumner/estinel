@@ -73,7 +73,8 @@ define_locations_table <- function() {
     tibble::tibble(location = "A63", lon = -46.74, lat = -76.29, purpose = "iceberg,antarctica"),
     tibble::tibble(location = "Eyjafjordur", lon = -18.2 + 0.073,  lat =65.85, radiusx = 5000, radiusy = 5000, purpose = "cetacean,island,iceland"),
     tibble::tibble(location = "Eyjafjordur_Fjord", lon = -18.2 + 0.073,  lat =65.85, radiusx = 12000, radiusy = 12000, resolution = 20, purpose = "cetacean,island,iceland"),
-    tibble::tibble(location = "San_Simeon", lon = -121.1464257, lat = 35.6114425, purpose = "pinniped,california"),   cleanup_table()) |> 
+    tibble::tibble(location = "San_Simeon", lon = -121.1464257, lat = 35.6114425, purpose = "pinniped,california"),
+    cleanup_table()) |> 
     fill_values() |> dplyr::distinct(location, .keep_all = TRUE) |> check_table()
 }
 
@@ -127,54 +128,6 @@ check_browser_needs_update <- function(
 }
 
 
-#' #' Update browser HTML on remote server
-#' #'
-#' #' @param local_path Character. Path to local browser HTML
-#' #' @param bucket Character. S3 bucket name
-#' #' @param remote_path Character. Path within bucket
-#' #' @return Logical. TRUE if upload successful
-#' update_browser_html <- function(
-#'     local_path = "inst/docs/catalog-browser.html",
-#'     bucket = "estinel",
-#'     remote_path = "catalog/catalog-browser.html"
-#' ) {
-#'   
-#'   set_gdal_envs()
-#'   
-#'   if (!file.exists(local_path)) {
-#'     stop("Local browser file not found: ", local_path)
-#'   }
-#'   
-#'   # Upload to S3
-#'   output_path <- sprintf("/vsis3/%s/%s", bucket, remote_path)
-#'   
-#'   tryCatch({
-#'     # Read local file
-#'     con_local <- file(local_path, "rb")
-#'     bytes <- readBin(con_local, "raw", file.info(local_path)$size)
-#'     close(con_local)
-#'     
-#'     # Write to S3
-#'     con_remote <- new(gdalraster::VSIFile, output_path, "w")
-#'     con_remote$write(bytes)
-#'     con_remote$close()
-#'     
-#'     # Verify upload
-#'     if (gdalraster::vsi_stat(output_path, "exists")) {
-#'       message("✓ Browser HTML uploaded successfully to ", output_path)
-#'       return(TRUE)
-#'     } else {
-#'       warning("Upload may have failed - file not found at ", output_path)
-#'       return(FALSE)
-#'     }
-#'     
-#'   }, error = function(e) {
-#'     warning("Failed to upload browser HTML: ", e$message)
-#'     return(FALSE)
-#'   })
-#' }
-
-
 update_browser_html <- function(
     local_path = "inst/docs/catalog-browser.html",
     bucket = "estinel",
@@ -195,12 +148,13 @@ update_browser_html <- function(
   result <- system(cmd, ignore.stdout = FALSE)
   
   if (result == 0) {
-    message("✓ Browser HTML uploaded with correct Content-Type")
+    message("OK: Browser HTML uploaded with correct Content-Type")
     return(TRUE)
   } else {
     stop("Upload failed")
   }
 }
+
 #' Check and update browser if needed
 #'
 #' @param local_path Character. Path to local browser HTML
@@ -232,6 +186,7 @@ check_and_update_browser <- function(
     return("Browser update FAILED - check logs")
   }
 }
+
 audit_location_coverage <- function(viewtable, expected_start = "2015-01-01") {
   coverage <- viewtable |> 
     dplyr::group_by(location) |> 
@@ -264,8 +219,9 @@ build_ndvi_dsn <- function(assets, rootdir = tempdir()) {
   build_warped_composite(assets, c("nir", "red"), "_ndvi",
                          rootdir = rootdir, return_tibble = FALSE)
 }
+
 # ==============================================================================
-# REFACTORED: Consolidated Image Building Functions
+# Consolidated Image Building Functions
 # ==============================================================================
 # Combines build_image_dsn and build_scl_dsn into a single flexible function
 # ==============================================================================
@@ -445,19 +401,6 @@ build_scl_dsn <- function(assets, div = NULL, root = tempdir()) {
   )
 }
 
-# ==============================================================================
-# BENEFITS:
-# ==============================================================================
-# 1. Single source of truth for warping logic
-# 2. No code duplication (was ~80% identical)
-# 3. Easy to add new band combinations:
-#    - NDVI: build_warped_composite(assets, c("nir", "red"), "_ndvi")
-#    - True color: already have it!
-#    - False color: build_warped_composite(assets, c("nir", "red", "green"))
-# 4. Consistent error handling across all outputs
-# 5. Easier to test (one function to test, not two)
-# 6. Easier to optimize (improve once, benefits all)
-# 7. Maintains backward compatibility via wrappers
 build_image_png <- function(x, force = FALSE, type) {
   set_gdal_envs()
   test <- try({
@@ -482,7 +425,6 @@ build_image_png <- function(x, force = FALSE, type) {
         fs::dir_create(dirname(outpng))
       }
     }
-    # writeLines(c(dsn, outpng), "/perm_storage/home/mdsumner/Git/estinel/afile")
     r <- terra::rast(dsn, raw = TRUE)
     if (type == "q128") {
       r <- stretch_q128(r)
@@ -496,14 +438,13 @@ build_image_png <- function(x, force = FALSE, type) {
     terra::writeRaster(r, outpng, 
                        overwrite = TRUE, datatype = "INT1U", NAflag = NA)
   })
-  #gdalraster::translate(dsn, outpng, cl_arg = c("-of", "PNG", "-scale", "-ot", "Byte"))
   if (inherits(test, "try-error")) return(NA_character_)
   outpng
 }
 
 
 build_thumb <- function(dsn, force = FALSE) {
-   set_gdal_envs()
+  set_gdal_envs()
   test <- try({
     if (is.na(dsn)) {
       print("bad dsn!!")
@@ -515,11 +456,7 @@ build_thumb <- function(dsn, force = FALSE) {
         return(outfile)
       }
     }
-    # r <- terra::rast(dsn)
-    ## bug #1973 don't use
-    ##r2 <- terra::resample(r, terra::res(r) * 10)
-    #r2 <- terra::rast(r * 1)
-    #terra::res(r2) <- terra::res(r) * 8
+    ## bug #1973 don't use terra::resample here
     Sys.setenv(GDAL_PAM_ENABLED = "NO")
     on.exit(Sys.setenv(GDAL_PAM_ENABLED = "YES"), add = TRUE)
     trans <- gdalraster::translate(dsn, tf <- tempfile(fileext = ".png", tmpdir = "/vsimem"), cl_arg = c("-outsize", "12.5%", "12.5%"))
@@ -530,11 +467,6 @@ build_thumb <- function(dsn, force = FALSE) {
     con1 <- new(gdalraster::VSIFile, outfile, "w")
     con1$write(bytes)
     con1$close()
-    #rm(bytes); gc()
-    #invisible(NULL)
-    
-    #Sys.setenv(GDAL_PAM_ENABLED = "NO")
-    #test <- try(terra::writeRaster(terra::project(r, r2), outfile, filetype = "PNG"))
   })
   if (inherits(test, "try-error")) return(NA_character_)
   outfile
@@ -563,11 +495,10 @@ cleanup_table <- function() {
   x$location <- substr(x$location, 1, stp)
   x$location <- trimws(x$location)
   x$location <- gsub("\\s+", "_", x$location, perl = TRUE)
-  x$location <- gsub("é", "e", x$location)
+  x$location <- gsub("\u00e9", "e", x$location)
   x$purpose <- "emperor"
   x
 }
-
 
 fill_values <- function(x) {
   for (var in c("resolution", "radiusx", "radiusy")) {
@@ -576,7 +507,7 @@ fill_values <- function(x) {
   }
   badpurp <- is.na(x$purpose)
   if (any(badpurp))  x$purpose[badpurp] <- "none"
-
+  
   x$SITE_ID <- sprintf("site_%s", unlist(lapply(x$location, digest::digest, "murmur32")))
   x
 }
@@ -606,18 +537,6 @@ filter_new_solardays <- function(stac_table) {
   
   stac_table[vapply(stac_table$assets, nrow, integer(1)) > 0, ]
 }
-
-# getstac_json <- function(x, trigger) {
-#   js <- try(jsonlite::fromJSON(x$query))
-#   if (inherits(js, "try-error") || (length(js$features) < 1) || (!is.null(js$numberReturned) &&js$numberReturned < 1)) {
-#     return(list())
-#   } else {
-#     return(js)
-#   }
-#   x
-# }
-
-
 
 #' Fetch STAC JSON for a single row (used in mapped target)
 #' Returns identifying info along with results for safe joining
@@ -659,6 +578,7 @@ join_stac_results <- function(querytable, stac_json_list) {
   message("Joined ", sum(!is.na(result$js)), " of ", nrow(result), " queries with results")
   result
 }
+
 getstac_query_adaptive <- function(query_specs, provider, collection, limit = 300) {
   llnames <- c("lonmin", "lonmax", "latmin", "latmax")
   
@@ -779,9 +699,7 @@ mkextent <- function(lon, lat, bufy = 3000, bufx = NULL, cosine = FALSE) {
 
 
 # ==============================================================================
-# WORKAROUND: Smart Query Chunking for Bootstrap + Markers
-# ==============================================================================
-# Add this to R/functions.R (after prepare_queries)
+# Smart Query Chunking for Bootstrap + Markers
 # ==============================================================================
 
 #' Prepare queries with automatic chunking for long date ranges
@@ -803,35 +721,27 @@ prepare_queries_chunked <- function(spatial_window, markers = NULL,
   
   # Start with basic query prep
   if (!is.null(markers)) {
-  query_table <- dplyr::left_join(spatial_window, markers, 
-                                  by = c("SITE_ID", "location"))
+    query_table <- dplyr::left_join(spatial_window, markers, 
+                                    by = c("SITE_ID", "location"))
   } else {
     query_table <- spatial_window
   }
-
+  
   print(sprintf("about to set start_solarday for %s", paste0(spatial_window$location, collapse = ",")))
-  # Fix: Use if_else to preserve Date class
-  # query_table$start_solarday <- dplyr::if_else(
-  #   is.na(query_table$last_solarday),
-  #   as.Date(default_start),
-  #   query_table$last_solarday + 1
-  # )
-  #print(sprintf("finished %s", spatial_window$location))
-  # 
   query_table$start_solarday <- dplyr::if_else(
     is.na(query_table$last_solarday),
     as.Date(default_start),
     pmax(query_table$last_solarday + 1, as.Date("2024-01-01"))  # Floor it
   )
-print(sprintf("finished %s", spatial_window$location))
-
+  print(sprintf("finished %s", spatial_window$location))
+  
   end_solarday <- as.Date(now) + 1
   
   # Calculate timezone buffers
   query_table$offset_hours <- query_table$lon / 15
   query_table$buffer_hours <- abs(query_table$offset_hours) + 12
   
-  # NEW: Detect which locations need chunking
+  # Detect which locations need chunking
   query_table$days_span <- as.numeric(end_solarday - query_table$start_solarday)
   query_table$needs_chunking <- query_table$days_span > chunk_threshold_days
   
@@ -967,31 +877,19 @@ consolidate_chunks <- function(stac_tables) {
   
   result
 }
+
 process_stac_table2 <- function(table) {
   js <- table[["js"]][[1]]
   hrefs <- tibble::as_tibble(lapply(js$features$assets, \(.x) .x$href))
   hrefs$datetime <- as.POSIXct(strptime(js$features$properties$datetime, "%Y-%m-%dT%H:%M:%OSZ"), tz = "UTC")
   
-  #  bbox <- do.call(rbind, js$features$bbox)
-  #  return(hrefs)
   centroid <- lapply(js$features$bbox, function(bbox) c(mean(bbox[c(1, 3)]), mean(bbox[c(2, 4)])))
   centroid_lon <- js$features$properties$`proj:centroid`[,2] %||%  unlist(lapply(centroid, "[", 1))
   centroid_lat <- js$features$properties$`proj:centroid`[,1] %||% unlist(lapply(centroid, "[", 2))
-  #hrefs$centroid_lon <- centroid_lon
-  #hrefs$centroid_lat <- centroid_lat
   hrefs$solarday <- as.Date(round(hrefs$datetime - (centroid_lon/15 * 3600), "days"))
-  # hrefs$location <- table$location
-  # hrefs$xmin <- table$xmin
-  # hrefs$xmax <- table$xmax
-  # hrefs$ymin <- table$ymin
-  # hrefs$ymax <- table$ymax
-  # hrefs$crs <- table$crs
-  # hrefs$collection <- table$collection
-  # hrefs$provider <- table$provider
-  # 
+  
   table$assets <- list(hrefs)
   table
-  #hrefs
 }
 
 put_bytes_at <- function(input, output) {
@@ -1088,10 +986,12 @@ stretch_histeq <- function(x, ...) {
   ## set the values to the input, then stretch to 0,255
   terra::stretch(terra::setValues(x, c(terra::values(rv))), histeq = FALSE, maxcell = terra::ncell(x))
 }
+
 stretch_q128 <- function(xx, n = 128L, type = 7L) {
   q <- quantile(terra::values(xx), seq(0, 1, length.out = n), type = type, names = FALSE, na.rm = TRUE)
   terra::stretch(terra::setValues(xx, q[cut(terra::values(xx), unique(q), labels = F, include.lowest = T)]))
 }
+
 unproj <- function(x, source) {
   reproj::reproj_extent(x, "EPSG:4326", source = source)
 }
@@ -1133,7 +1033,6 @@ vsicurl_for <- function(x, pc = FALSE) {
 }
 
 warp_to_dsn <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = NULL, target_dim = NULL, resample = "near") {
-  #dsn <- sprintf("/vsicurl/%s", dsn)
   args <- character()
   t_srs <- ""
   if (!is.null(target_crs)) {
@@ -1152,10 +1051,8 @@ warp_to_dsn <- function(dsn, target_ext = NULL, target_crs = NULL, target_res = 
     target_dim <- rep(target_dim, length.out = 2L)
     args <- c(args, "-ts", target_dim)
   }
-  #t_srs <- gdalraster::srs_to_wkt(t_srs)
   chk <- try(gdalraster::warp(dsn, tf <- tempfile(fileext = ".tif"), t_srs = t_srs, cl_arg = args, quiet = TRUE), silent = TRUE)
   if (inherits(chk, "try-error")) return(NA_character_)
-  #x <- gdalraster::read_ds(new(gdalraster::GDALRaster, tf))
   tf
 }
 
@@ -1199,33 +1096,6 @@ write_markers <- function(bucket, updated_markers) {
   success
 }
 
-# write_react_json <- function(x) {
-#   set_gdal_envs()
-#   allfiles <- split(x, x$location) 
-#   locationdets <- lapply(allfiles, function(aloc) {
-#     imagerow <- lapply(split(aloc, 1:nrow(aloc)), function(arow) {
-#       list(id = digest::digest(arow), 
-#            date = format(arow[["solarday"]]), 
-#            url = list(q128 = arow$view_q128, histeq = arow$view_histeq, stretch = arow$view_stretch),
-#            thumbnail = list(q128 = arow$thumb_q128, histeq = arow$thumb_histeq, stretch = arow$thumb_stretch), 
-#            download = arow$outfile)
-#     })
-#     location_id <- aloc$SITE_ID[1L]
-#     location_name <- aloc$location[1L]
-#     out <- list(id = location_id, name = location_name, images = imagerow)
-#     if ("purpose" %in% names(aloc)) {
-#       out$purpose <- aloc$purpose[[1]]  # purpose is list column
-#     }
-#     out
-#   })
-#   outfile <- "inst/docs/image-catalog.json"
-#   if (!is_cloud(outfile)) {
-#     if (!fs::dir_exists(dirname(outfile))) fs::dir_create(dirname(outfile))
-#     jsonlite::write_json(list(locations = locationdets), outfile, pretty = TRUE, auto_unbox = TRUE)
-#   }
-#   outfile
-# }
-
 
 ## CAS system
 
@@ -1233,7 +1103,6 @@ write_markers <- function(bucket, updated_markers) {
 # S3 CAS (Content-Addressable Storage) TRACKING FUNCTIONS
 # ==============================================================================
 # These functions enable targets to track S3 file changes via ETags
-# Add these to R/functions.R after write_react_json()
 # ==============================================================================
 
 #' Get S3 object ETag (MD5 hash) without downloading
@@ -1422,8 +1291,8 @@ build_image_png_tracked <- function(x, force = FALSE, type,
 #' @return List with thumb_path and marker
 build_thumb_tracked <- function(dsn, force = FALSE,
                                 marker_dir = "_targets/s3_markers") {
-
-set_gdal_envs()  
+  
+  set_gdal_envs()  
   # Build the thumbnail
   thumb_path <- build_thumb(dsn, force = force)
   
@@ -1495,15 +1364,12 @@ extract_s3_paths <- function(tracked_results, path_field = "s3_path") {
 # ==============================================================================
 # S3-Based Catalog Generation (Separate from Pipeline)
 # ==============================================================================
-# Add to R/functions.R
-# ==============================================================================
-
 
 build_catalog_from_s3 <- function(bucket = "estinel",
                                   prefix = "sentinel-2-c1-l2a",
                                   locations_table, 
                                   wait_for = NULL) {
-set_gdal_envs()  
+  set_gdal_envs()  
   message("Listing S3 bucket: ", bucket, "/", prefix)
   
   # List all files (include "pawsey/" alias prefix!)
@@ -1563,6 +1429,7 @@ set_gdal_envs()
   
   catalog
 }
+
 #' Audit catalog against locations table
 #'
 #' Helper to inspect what's in S3 vs what's defined in locations
@@ -1612,7 +1479,7 @@ write_react_json <- function(viewtable) {
           "date": "<<DATE>>"
 }'
   
-  # UPDATED: Added purpose array
+  # Includes purpose array
   site_template <- 
     '{
     "id": "<<SITE_ID>>",
@@ -1632,7 +1499,7 @@ write_react_json <- function(viewtable) {
     SITE_NAME <- imagetable$location[1]
     SITE_ID <- imagetable$SITE_ID[1]
     
-    # ADDED: Parse CSV string to JSON array
+    # Parse CSV string to JSON array
     PURPOSE_JSON <- if ("purpose" %in% names(imagetable) && !is.na(imagetable$purpose[1])) {
       # Split CSV string: "base,heard" -> c("base", "heard")
       purpose_vec <- trimws(strsplit(imagetable$purpose[1], ",")[[1]])
@@ -1682,7 +1549,7 @@ upload_catalog_to_release <- function(json_file,
     stop("Catalog file not found: ", json_file)
   }
   
-  # Compress the JSON (40MB → ~2-5MB typically)
+  # Compress the JSON (40MB to ~2-5MB typically)
   compressed_file <- paste0(tools::file_path_sans_ext(json_file), ".json.gz")
   
   message("Compressing catalog: ", json_file)
@@ -1711,7 +1578,7 @@ upload_catalog_to_release <- function(json_file,
       overwrite = TRUE  # Replace existing file
     )
     
-    message("✓ Upload successful!")
+    message("OK: Upload successful!")
     message("Download URL: https://github.com/", repo, "/releases/download/", tag, "/", basename(compressed_file))
     
     # Clean up compressed file
@@ -1893,4 +1760,3 @@ getstac_query_adaptive_all <- function(query_specs, provider, collection, limit 
   message("Built ", nrow(query_specs), " STAC queries")
   query_specs
 }
-

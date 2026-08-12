@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+FROM ghcr.io/hypertidy/gdal-r-full:latest
+
+LABEL build.date="2026-04-15 00"
+LABEL org.opencontainers.image.source="https://github.com/AustralianAntarcticDivision/estinel"
+LABEL org.opencontainers.image.description="Estinel production runner (R + GDAL + targets)"
+
+RUN apt-get update && apt-get install -y nano 
+
+## add rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH=/root/.cargo/bin:$PATH
+
+# Upgrade any existing R packages, then install the estinel runtime deps.
+# install_cran(..., upgrade = "always") makes the "all upgrades welcome" intent explicit.
+RUN R -e "install.packages('remotes', repos = 'https://cloud.r-project.org')" \
+ && R -e "remotes::install_github(c('hypertidy/sds', 'hypertidy/robstore'))" \
+ && R -e "remotes::install_cran(c( \
+      'qs2', 'readxl', 'vaster', 'tidyr', \
+      'targets', 'tarchetypes', 'crew', \
+      'reproj', 'jsonlite', 'vapour', \
+      'dplyr', 'glue', 'digest', 'gdalraster'), upgrade = 'always')" 
+
+# minioclient ships the mc binary on first use; pre-fetch it at build time
+# so the container doesn't need network access for this on first run.
+RUN R -e "minioclient::install_mc()" || true
+
+WORKDIR /work
+CMD ["bash"]
