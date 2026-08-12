@@ -23,6 +23,10 @@ tar_option_set( controller = if (ncpus <= 1) NULL else crew_controller_local( wo
 
 tar_assign({
   # === SETUP ===
+  
+  run_locations <- Sys.getenv("ESTINEL_LOCATIONS", "ALL") |>
+    tar_target(cue = tar_cue(mode = "always"))
+  
   bucket <- "estinel" |> tar_target() 
 rootdir <- sprintf("/vsis3/%s", bucket) |> tar_target() 
 endpoint <- "https://projects.pawsey.org.au" |> tar_target()
@@ -33,14 +37,24 @@ collection <- c("sentinel-2-c1-l2a") |> tar_target()
   # === LOCATION SETUP === Define locations from code and Excel files
   tabl <- define_locations_table() |> tar_target()
   
+  tabl_run <- (if (identical(run_locations, "ALL")) tabl else
+    dplyr::filter(tabl, location %in% strsplit(run_locations, ",")[[1]])) |>
+    tar_target()
+  
   # Compute spatial windows (UTM CRS, extents in projected and lonlat)
-  spatial_window <- mk_spatial_window(tabl) |> tar_target(pattern = map(tabl))
-  
+  spatial_window <- mk_spatial_window(tabl_run) |>
+    tar_target(pattern = map(tabl_run))
   # === MARKER-BASED INCREMENTAL PROCESSING === Read existing markers (returns full table, one row per location)
-  markers <- read_markers_all(bucket, spatial_window) |> tar_target()
+  markers <- read_markers_all(bucket, spatial_window) |>
+    tar_target(cue = tar_cue(mode = "always"))
   
-  # Prepare queries with chunking (returns expanded table with all chunks)
-  query_specs <- prepare_queries_chunked_all( spatial_window, markers, default_start = "2015-01-01", now = Sys.time(), chunk_threshold_days = 365 ) |> tar_target() # Single target, no mapping
+  query_specs <- prepare_queries_chunked_all(
+    spatial_window, markers,
+    default_start = "2015-01-01",
+    now = Sys.time(),
+    chunk_threshold_days = 365
+  ) |>
+    tar_target(cue = tar_cue(mode = "always"))
   
   # === STAC QUERIES === Build STAC query URLs (adds query column to all rows)
   querytable <- getstac_query_adaptive_all(query_specs, provider, collection) |> tar_target() # Single target, no mapping
@@ -146,14 +160,12 @@ collection <- c("sentinel-2-c1-l2a") |> tar_target()
   pagejson <- write_react_json(catalog_table) |> tar_force(force = TRUE)
   web <- update_react(pagejson, rootdir) |> tar_force(force = TRUE)
   
-#  browser_update <- check_and_update_browser(
-#    local_path = "inst/docs/catalog-browser.html",
-#    remote_url = "https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html",
-#    bucket = "estinel"
-#  ) |>
-#    tar_target(
-#      cue = tar_cue(mode = "always")  # Always check (but only upload if needed)
-#    )
+  browser_update <- check_and_update_browser(
+    local_path = "inst/docs/catalog-browser.html",
+    remote_url = "https://projects.pawsey.org.au/estinel/catalog/catalog-browser.html",
+    bucket = "estinel"
+  ) |>
+    tar_target(cue = tar_cue(mode = "always"))
   
   # === UPDATE MARKERS ===
   # After successful processing, update markers with latest solarday
@@ -164,12 +176,11 @@ collection <- c("sentinel-2-c1-l2a") |> tar_target()
   
   # Upload catalog to GitHub Release (replaces git tracking)
   catalog_release <- upload_catalog_to_release(
-    pagejson, 
-    repo = "mdsumner/estinel",
+    pagejson,
+    repo = "AustralianAntarcticDivision/estinel",
     tag = "catalog-data"
-  ) |> 
-    tar_target(
-      cue = tar_cue(mode = "always")  # Always upload when catalog changes
-    )
+  ) |>
+    tar_target(cue = tar_cue(mode = "always"))
+  
   
 })
